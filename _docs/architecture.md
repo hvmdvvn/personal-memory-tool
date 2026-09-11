@@ -16,7 +16,7 @@ What exists in the repository today:
 - **Scaffold-only UI** — template app screen; not the product Inbox/Search/Assistant surfaces
 - **Rust unit tests** — trivial health/smoke tests in `src-tauri` (`cargo test`)
 - **Data model design (v001)** — `_docs/data-model/` (`schema_v001.sql` + design note)
-- **SQLite persistence** — `src-tauri/src/db.rs`: open/migrate `v001_captures`, insert/get raw captures
+- **SQLite persistence** — `src-tauri/src/db.rs`: open/migrate `v001_captures` + `v002_captures_fts`, insert/get raw captures, `search_exact` (FTS5)
 - Planning and context docs under `_docs/`, plus agent entrypoints (`AGENTS.md`, `CLAUDE.md`)
 
 Not implemented yet: capture engine, AI pipeline, browser extension, search, connections, resurfacing, or personal assistant.

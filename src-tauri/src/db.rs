@@ -1,6 +1,6 @@
-//! Local SQLite persistence for raw captures (issue #3).
+//! Local SQLite persistence for raw captures.
 //!
-//! Applies migration `v001_captures` from `_docs/data-model/schema_v001.sql`.
+//! Migrations: `v001_captures` (schema), `v002_captures_fts` (FTS5 exact search).
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -8,8 +8,12 @@ use std::path::Path;
 
 /// Migration identity recorded in `schema_migrations`.
 pub const MIGRATION_V001_CAPTURES: &str = "v001_captures";
+pub const MIGRATION_V002_CAPTURES_FTS: &str = "v002_captures_fts";
 
 const V001_SQL: &str = include_str!("../../_docs/data-model/schema_v001.sql");
+const V002_SQL: &str = include_str!("../../_docs/data-model/schema_v002_fts.sql");
+
+const SNIPPET_MAX_CHARS: usize = 160;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RawCapture {
@@ -22,6 +26,13 @@ pub struct RawCapture {
     pub source_url: Option<String>,
     pub source_extra: Option<String>,
     pub media_path: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CaptureSummary {
+    pub id: String,
+    pub snippet: String,
+    pub captured_at: String,
 }
 
 #[derive(Debug)]
@@ -62,16 +73,22 @@ impl Database {
             );",
         )?;
 
-        if !self.migration_applied(MIGRATION_V001_CAPTURES)? {
-            self.conn.execute_batch(V001_SQL)?;
-            self.conn.execute(
-                "INSERT INTO schema_migrations (id, applied_at) VALUES (?1, datetime('now'));",
-                params![MIGRATION_V001_CAPTURES],
-            )?;
-        }
+        self.apply_migration(MIGRATION_V001_CAPTURES, V001_SQL)?;
+        self.apply_migration(MIGRATION_V002_CAPTURES_FTS, V002_SQL)?;
 
         // Ensure FKs remain on after any SQL that may have set them.
         self.configure()?;
+        Ok(())
+    }
+
+    fn apply_migration(&self, id: &str, sql: &str) -> rusqlite::Result<()> {
+        if !self.migration_applied(id)? {
+            self.conn.execute_batch(sql)?;
+            self.conn.execute(
+                "INSERT INTO schema_migrations (id, applied_at) VALUES (?1, datetime('now'));",
+                params![id],
+            )?;
+        }
         Ok(())
     }
 
@@ -128,12 +145,55 @@ impl Database {
             .optional()
     }
 
+    /// Exact/keyword search via FTS5. Independent of semantic search.
+    pub fn search_exact(&self, query: &str) -> rusqlite::Result<Vec<CaptureSummary>> {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut stmt = self.conn.prepare(
+            "SELECT c.id, c.original_content, c.captured_at
+             FROM captures_fts
+             JOIN captures c ON c.rowid = captures_fts.rowid
+             WHERE captures_fts MATCH ?1
+             ORDER BY rank",
+        )?;
+
+        let rows = stmt.query_map(params![trimmed], |row| {
+            let id: String = row.get(0)?;
+            let content: String = row.get(1)?;
+            let captured_at: String = row.get(2)?;
+            Ok(CaptureSummary {
+                id,
+                snippet: truncate_snippet(&content, SNIPPET_MAX_CHARS),
+                captured_at,
+            })
+        })?;
+
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
     /// Test helper: whether foreign_keys pragma is on.
     pub fn foreign_keys_enabled(&self) -> rusqlite::Result<bool> {
         let v: i64 = self
             .conn
             .query_row("PRAGMA foreign_keys", [], |row| row.get(0))?;
         Ok(v == 1)
+    }
+}
+
+fn truncate_snippet(content: &str, max_chars: usize) -> String {
+    let mut chars = content.chars();
+    let snippet: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{snippet}…")
+    } else {
+        snippet
     }
 }
 
@@ -164,6 +224,20 @@ mod tests {
         }
     }
 
+    fn capture(id: &str, content: &str) -> RawCapture {
+        RawCapture {
+            id: id.into(),
+            original_content: content.into(),
+            captured_at: "2026-09-11T16:00:00Z".into(),
+            source_kind: None,
+            source_app: None,
+            source_title: None,
+            source_url: None,
+            source_extra: None,
+            media_path: None,
+        }
+    }
+
     #[test]
     fn open_migrate_insert_round_trip_temp_file() {
         let path = temp_db_path();
@@ -187,6 +261,7 @@ mod tests {
         db.migrate().expect("second migrate");
         db.migrate().expect("third migrate");
         assert!(db.migration_applied(MIGRATION_V001_CAPTURES).unwrap());
+        assert!(db.migration_applied(MIGRATION_V002_CAPTURES_FTS).unwrap());
     }
 
     #[test]
@@ -216,7 +291,6 @@ mod tests {
             .expect("found");
         assert_eq!(loaded, capture);
 
-        // No AI row required — query metadata count is zero.
         let count: i64 = db
             .conn
             .query_row(
@@ -253,5 +327,32 @@ mod tests {
         db.insert_raw_capture(&capture).unwrap();
         let loaded = db.get_raw_capture("cap-exact").unwrap().unwrap();
         assert_eq!(loaded.original_content, content);
+    }
+
+    #[test]
+    fn search_exact_hits_and_misses() {
+        let db = Database::open_in_memory().expect("open");
+        db.insert_raw_capture(&capture("a", "Discipline is doing hard things daily"))
+            .unwrap();
+        db.insert_raw_capture(&capture("b", "A recipe for chocolate cake"))
+            .unwrap();
+
+        let hits = db.search_exact("discipline").expect("search");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, "a");
+        assert!(hits[0].snippet.to_lowercase().contains("discipline"));
+        assert_eq!(hits[0].captured_at, "2026-09-11T16:00:00Z");
+
+        let misses = db.search_exact("quantum").expect("search");
+        assert!(misses.is_empty());
+    }
+
+    #[test]
+    fn search_exact_empty_query_returns_empty() {
+        let db = Database::open_in_memory().expect("open");
+        db.insert_raw_capture(&capture("a", "something searchable"))
+            .unwrap();
+        assert!(db.search_exact("").unwrap().is_empty());
+        assert!(db.search_exact("   ").unwrap().is_empty());
     }
 }
