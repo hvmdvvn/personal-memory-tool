@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Personal Memory Capture",
+  "version": "0.1.0",
+  "description": "Sends captures to the local Personal Memory desktop app.",
+  "permissions": ["storage"],
+  "host_permissions": ["http://127.0.0.1:17832/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Ping Personal Memory"
+  }
+}

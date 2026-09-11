@@ -68,6 +68,10 @@ The SQLite row references that path in `media_path` (`source_kind = screenshot`)
 
 **Cleanup:** This version does **not** delete orphaned media files automatically. Removing captures later should also remove files (future work); for now, treat `media/` as retained until manually cleaned.
 
+## Browser extension
+
+See [`extension/README.md`](extension/README.md). The desktop app serves authenticated loopback IPC on `http://127.0.0.1:17832` (token in `src-tauri/src/ipc.rs`).
+
 ## Docs
 
 See `_docs/` and `AGENTS.md` for architecture, process, and agent guidance.
