@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./App.css";
 
-type View = "inbox" | "search";
+type View = "inbox" | "search" | "assistant" | "connections";
 
 type CaptureSummary = {
   id: string;
@@ -24,6 +24,26 @@ type UnifiedHit = {
   content_type: string | null;
 };
 
+type RelatedHit = {
+  id: string;
+  snippet: string;
+  captured_at: string;
+  source_kind: string | null;
+  source_app: string | null;
+  score: number;
+  metadata_boost: boolean;
+};
+
+type QaAnswer = {
+  answer: string;
+  citation_ids: string[];
+  model: string;
+};
+
+type ChatMessage =
+  | { role: "user"; text: string }
+  | { role: "assistant"; text: string; citation_ids: string[] };
+
 const CONTENT_TYPES = [
   "any",
   "book_quote",
@@ -36,6 +56,13 @@ const CONTENT_TYPES = [
   "task",
   "general",
 ] as const;
+
+const NAV: { id: View; label: string }[] = [
+  { id: "inbox", label: "Inbox" },
+  { id: "search", label: "Search" },
+  { id: "assistant", label: "Assistant" },
+  { id: "connections", label: "Connections" },
+];
 
 function sourceLabel(item: {
   source_kind: string | null;
@@ -59,6 +86,17 @@ function App() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+
+  const [chat, setChat] = useState<ChatMessage[]>([]);
+  const [question, setQuestion] = useState("");
+  const [askLoading, setAskLoading] = useState(false);
+  const [askError, setAskError] = useState<string | null>(null);
+
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [related, setRelated] = useState<RelatedHit[]>([]);
+  const [relatedLoading, setRelatedLoading] = useState(false);
+  const [relatedError, setRelatedError] = useState<string | null>(null);
+  const [relatedEmptyHint, setRelatedEmptyHint] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -123,23 +161,74 @@ function App() {
     [query, contentType, fromDate, toDate],
   );
 
+  const ask = useCallback(
+    async (event?: FormEvent) => {
+      event?.preventDefault();
+      const q = question.trim();
+      if (!q || askLoading) return;
+      setAskError(null);
+      setAskLoading(true);
+      setChat((prev) => [...prev, { role: "user", text: q }]);
+      setQuestion("");
+      try {
+        const ans = await invoke<QaAnswer>("ask_memories", {
+          question: q,
+          topK: 5,
+        });
+        setChat((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            text: ans.answer,
+            citation_ids: ans.citation_ids,
+          },
+        ]);
+      } catch (e) {
+        setAskError(String(e));
+      } finally {
+        setAskLoading(false);
+      }
+    },
+    [question, askLoading],
+  );
+
+  const loadRelated = useCallback(async (id: string) => {
+    setSelectedId(id);
+    setRelatedLoading(true);
+    setRelatedError(null);
+    setRelatedEmptyHint(null);
+    setRelated([]);
+    try {
+      const rows = await invoke<RelatedHit[]>("related_to", {
+        captureId: id,
+        limit: 10,
+      });
+      setRelated(rows);
+      if (rows.length === 0) {
+        setRelatedEmptyHint(
+          "No related items (capture may lack an embedding—run embed_capture first).",
+        );
+      }
+    } catch (e) {
+      setRelatedError(String(e));
+    } finally {
+      setRelatedLoading(false);
+    }
+  }, []);
+
   return (
     <main className="app-shell">
       <nav className="top-nav" aria-label="Primary">
-        <button
-          type="button"
-          className={view === "inbox" ? "nav-active" : undefined}
-          onClick={() => setView("inbox")}
-        >
-          Inbox
-        </button>
-        <button
-          type="button"
-          className={view === "search" ? "nav-active" : undefined}
-          onClick={() => setView("search")}
-        >
-          Search
-        </button>
+        {NAV.map((n) => (
+          <button
+            key={n.id}
+            type="button"
+            className={view === n.id ? "nav-active" : undefined}
+            onClick={() => setView(n.id)}
+          >
+            {n.label}
+          </button>
+        ))}
       </nav>
 
       {view === "inbox" ? (
@@ -185,7 +274,9 @@ function App() {
             </ul>
           )}
         </section>
-      ) : (
+      ) : null}
+
+      {view === "search" ? (
         <section className="inbox search-view">
           <header className="inbox-header">
             <div>
@@ -205,7 +296,6 @@ function App() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Find a quote, idea, or note…"
-                autoFocus
               />
             </label>
             <div className="filters">
@@ -274,7 +364,132 @@ function App() {
             </ul>
           ) : null}
         </section>
-      )}
+      ) : null}
+
+      {view === "assistant" ? (
+        <section className="inbox">
+          <header className="inbox-header">
+            <div>
+              <p className="eyebrow">Personal Memory</p>
+              <h1>Assistant</h1>
+              <p className="lede">
+                Ask questions answered only from your local captures.
+              </p>
+            </div>
+          </header>
+
+          {chat.length === 0 ? (
+            <p className="empty">
+              Ask about something you saved—citations will list the memory ids
+              used.
+            </p>
+          ) : (
+            <ul className="chat-list">
+              {chat.map((msg, i) => (
+                <li
+                  key={`${msg.role}-${i}`}
+                  className={`chat-bubble chat-${msg.role}`}
+                >
+                  <p className="snippet">{msg.text}</p>
+                  {msg.role === "assistant" && msg.citation_ids.length > 0 ? (
+                    <p className="citations">
+                      Citations: {msg.citation_ids.join(", ")}
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {askError ? <p className="error">{askError}</p> : null}
+
+          <form className="search-form" onSubmit={(e) => void ask(e)}>
+            <label className="field">
+              <span>Question</span>
+              <input
+                type="text"
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                placeholder="What did I save about…?"
+                disabled={askLoading}
+              />
+            </label>
+            <button type="submit" disabled={askLoading || !question.trim()}>
+              {askLoading ? "Thinking…" : "Ask"}
+            </button>
+          </form>
+        </section>
+      ) : null}
+
+      {view === "connections" ? (
+        <section className="inbox">
+          <header className="inbox-header">
+            <div>
+              <p className="eyebrow">Personal Memory</p>
+              <h1>Connections</h1>
+              <p className="lede">
+                Pick a capture to see embedding neighbors.
+              </p>
+            </div>
+            <button type="button" onClick={() => void refresh()} disabled={loading}>
+              {loading ? "Loading…" : "Refresh"}
+            </button>
+          </header>
+
+          {error ? <p className="error">{error}</p> : null}
+
+          {items.length === 0 && !loading ? (
+            <p className="empty">No captures to connect yet.</p>
+          ) : (
+            <ul className="capture-list">
+              {items.map((item) => (
+                <li key={item.id} className="capture-item">
+                  <button
+                    type="button"
+                    className={
+                      selectedId === item.id ? "pick-active pick" : "pick"
+                    }
+                    onClick={() => void loadRelated(item.id)}
+                  >
+                    <div className="meta">
+                      <time dateTime={item.captured_at}>{item.captured_at}</time>
+                      <span>{sourceLabel(item)}</span>
+                    </div>
+                    <p className="snippet">
+                      {item.snippet.trim() ? item.snippet : "(empty)"}
+                    </p>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {selectedId ? (
+            <div className="related-panel">
+              <h2>Related to {selectedId}</h2>
+              {relatedLoading ? <p className="empty">Loading…</p> : null}
+              {relatedError ? <p className="error">{relatedError}</p> : null}
+              {relatedEmptyHint && !relatedLoading ? (
+                <p className="empty">{relatedEmptyHint}</p>
+              ) : null}
+              {related.length > 0 ? (
+                <ul className="capture-list">
+                  {related.map((hit) => (
+                    <li key={hit.id} className="capture-item">
+                      <div className="meta">
+                        <time dateTime={hit.captured_at}>{hit.captured_at}</time>
+                        <span>score {hit.score.toFixed(3)}</span>
+                        {hit.metadata_boost ? <span>metadata boost</span> : null}
+                      </div>
+                      <p className="snippet">{hit.snippet}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
     </main>
   );
 }
