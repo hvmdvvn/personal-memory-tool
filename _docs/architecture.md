@@ -20,6 +20,7 @@ What exists in the repository today:
 - **Global shortcut stub** — `Ctrl+Shift+Space` via `tauri-plugin-global-shortcut`; emits `capture-shortcut` ack (no capture yet)
 - **Clipboard capture** — `capture_clipboard` Tauri command + `capture` module; stores raw row with `source_kind=clipboard`
 - **Active-window context** — soft-fail `source_app` / `source_title` via Windows APIs (`window_context`)
+- **Screenshot media** — PNG under `{app_data}/media/`, raw capture `media_path` + `capture_screenshot` command
 - Planning and context docs under `_docs/`, plus agent entrypoints (`AGENTS.md`, `CLAUDE.md`)
 
 Not implemented yet: capture engine, AI pipeline, browser extension, search, connections, resurfacing, or personal assistant.

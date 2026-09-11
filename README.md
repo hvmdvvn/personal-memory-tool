@@ -58,6 +58,16 @@ On press, the app logs `[shortcut] capture-shortcut-ack` and emits the Tauri eve
 4. Confirm the stub ack in the terminal (`[shortcut] capture-shortcut-ack`) and/or that the `capture-shortcut` event fires if you listen in the UI.
 5. If nothing happens, another app may already own that hotkey—check the terminal for `failed to register`.
 
+## Screenshots / media storage
+
+Screenshot PNGs are stored under the app data directory:
+
+`{app_data_dir}/media/{capture-id}.png`
+
+The SQLite row references that path in `media_path` (`source_kind = screenshot`). OCR/AI are not run on save.
+
+**Cleanup:** This version does **not** delete orphaned media files automatically. Removing captures later should also remove files (future work); for now, treat `media/` as retained until manually cleaned.
+
 ## Docs
 
 See `_docs/` and `AGENTS.md` for architecture, process, and agent guidance.

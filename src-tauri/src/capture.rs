@@ -80,6 +80,11 @@ fn utc_now_iso8601() -> String {
     epoch_secs_to_iso8601(secs)
 }
 
+/// Shared UTC timestamp helper for other capture kinds (e.g. screenshots).
+pub(crate) fn utc_now_iso8601_for_media() -> String {
+    utc_now_iso8601()
+}
+
 fn epoch_secs_to_iso8601(secs: u64) -> String {
     let days = (secs / 86_400) as i64;
     let tod = secs % 86_400;
