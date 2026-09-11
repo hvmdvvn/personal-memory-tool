@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./App.css";
 
-type View = "inbox" | "search" | "assistant" | "connections";
+type View = "inbox" | "search" | "assistant" | "connections" | "today";
 
 type CaptureSummary = {
   id: string;
@@ -11,6 +11,22 @@ type CaptureSummary = {
   captured_at: string;
   source_kind: string | null;
   source_app: string | null;
+};
+
+type ResurfaceItem = {
+  id: string;
+  snippet: string;
+  captured_at: string;
+  source_kind: string | null;
+  source_app: string | null;
+  content_type: string | null;
+  short_description: string | null;
+  rank: number;
+};
+
+type TodayResurfacing = {
+  day: string;
+  items: ResurfaceItem[];
 };
 
 type UnifiedHit = {
@@ -59,6 +75,7 @@ const CONTENT_TYPES = [
 
 const NAV: { id: View; label: string }[] = [
   { id: "inbox", label: "Inbox" },
+  { id: "today", label: "Today" },
   { id: "search", label: "Search" },
   { id: "assistant", label: "Assistant" },
   { id: "connections", label: "Connections" },
@@ -97,6 +114,10 @@ function App() {
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [relatedError, setRelatedError] = useState<string | null>(null);
   const [relatedEmptyHint, setRelatedEmptyHint] = useState<string | null>(null);
+
+  const [today, setToday] = useState<TodayResurfacing | null>(null);
+  const [todayLoading, setTodayLoading] = useState(false);
+  const [todayError, setTodayError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -215,6 +236,25 @@ function App() {
       setRelatedLoading(false);
     }
   }, []);
+
+  const loadToday = useCallback(async () => {
+    setTodayLoading(true);
+    setTodayError(null);
+    try {
+      const set = await invoke<TodayResurfacing>("ensure_today_resurfacing");
+      setToday(set);
+    } catch (e) {
+      setTodayError(String(e));
+    } finally {
+      setTodayLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (view === "today") {
+      void loadToday();
+    }
+  }, [view, loadToday]);
 
   return (
     <main className="app-shell">
@@ -487,6 +527,59 @@ function App() {
                 </ul>
               ) : null}
             </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {view === "today" ? (
+        <section className="inbox">
+          <header className="inbox-header">
+            <div>
+              <p className="eyebrow">Personal Memory</p>
+              <h1>Today</h1>
+              <p className="lede">
+                Older memories to revisit. Picked once per UTC day when you open
+                this view.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadToday()}
+              disabled={todayLoading}
+            >
+              {todayLoading ? "Loading…" : "Refresh"}
+            </button>
+          </header>
+
+          {todayError ? <p className="error">{todayError}</p> : null}
+
+          {!todayLoading && today && today.items.length === 0 ? (
+            <p className="empty">
+              Nothing to resurface yet. Need captures older than 7 days.
+            </p>
+          ) : null}
+
+          {today && today.items.length > 0 ? (
+            <>
+              <p className="meta">Day {today.day}</p>
+              <ul className="capture-list">
+                {today.items.map((item) => (
+                  <li key={item.id} className="capture-item">
+                    <div className="meta">
+                      <time dateTime={item.captured_at}>{item.captured_at}</time>
+                      <span>{item.content_type ?? "untyped"}</span>
+                    </div>
+                    {item.short_description ? (
+                      <p className="snippet">{item.short_description}</p>
+                    ) : (
+                      <p className="snippet">
+                        {item.snippet.trim() ? item.snippet : "(empty)"}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
           ) : null}
         </section>
       ) : null}

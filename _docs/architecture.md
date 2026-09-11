@@ -34,6 +34,7 @@ What exists in the repository today:
 - **Related items** — `related_to` cosine neighbors (optional topics/keywords boost)
 - **Personal Q&A** — `ask_memories` retrieves top-k, prompts Ollama, returns answer + citations
 - **Assistant / Connections UI** — chat panel + related-items browser in the web UI
+- **Daily resurfacing** — `ensure_today_resurfacing` / `get_today_resurfacing` (v005); Today view
 - Planning and context docs under `_docs/`, plus agent entrypoints (`AGENTS.md`, `CLAUDE.md`)
 
 Not implemented yet: capture engine, AI pipeline, browser extension, search, connections, resurfacing, or personal assistant.

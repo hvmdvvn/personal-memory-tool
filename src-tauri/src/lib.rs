@@ -10,6 +10,7 @@ pub mod ollama;
 pub mod orchestrate;
 pub mod qa;
 pub mod related;
+pub mod resurface;
 pub mod search;
 pub mod semantic;
 pub mod shortcut;
@@ -194,6 +195,28 @@ fn ask_memories(
     .map_err(|e| e.to_string())
 }
 
+/// Read today’s stored resurfacing set (may be empty if not yet ensured).
+#[tauri::command]
+fn get_today_resurfacing(app: tauri::AppHandle) -> Result<resurface::TodayResurfacing, String> {
+    let (_dir, db) = open_app_db(&app)?;
+    let now = capture::utc_now_iso8601_for_media();
+    resurface::get_today_resurfacing(&db, &now).map_err(|e| e.to_string())
+}
+
+/// Ensure today’s resurfacing set exists (picker runs once per UTC day).
+#[tauri::command]
+fn ensure_today_resurfacing(app: tauri::AppHandle) -> Result<resurface::TodayResurfacing, String> {
+    let (_dir, db) = open_app_db(&app)?;
+    let now = capture::utc_now_iso8601_for_media();
+    resurface::ensure_today_resurfacing(
+        &db,
+        &now,
+        resurface::DEFAULT_TODAY_LIMIT,
+        resurface::DEFAULT_MIN_AGE_DAYS,
+    )
+    .map_err(|e| e.to_string())
+}
+
 fn run_capture_now_from_shortcut(app: &tauri::AppHandle) -> Result<String, String> {
     let (dir, db) = open_app_db(app)?;
     let opts = CaptureNowOptions::default();
@@ -290,7 +313,9 @@ pub fn run() {
             enrich_capture,
             search_unified,
             related_to,
-            ask_memories
+            ask_memories,
+            get_today_resurfacing,
+            ensure_today_resurfacing
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");

@@ -1,6 +1,7 @@
 //! Local SQLite persistence for raw captures.
 //!
-//! Migrations: `v001_captures`, `v002_captures_fts`, `v003_embeddings`, `v004_classification`.
+//! Migrations: `v001_captures`, `v002_captures_fts`, `v003_embeddings`, `v004_classification`,
+//! `v005_resurfacing`.
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -11,11 +12,13 @@ pub const MIGRATION_V001_CAPTURES: &str = "v001_captures";
 pub const MIGRATION_V002_CAPTURES_FTS: &str = "v002_captures_fts";
 pub const MIGRATION_V003_EMBEDDINGS: &str = "v003_embeddings";
 pub const MIGRATION_V004_CLASSIFICATION: &str = "v004_classification";
+pub const MIGRATION_V005_RESURFACING: &str = "v005_resurfacing";
 
 const V001_SQL: &str = include_str!("../../_docs/data-model/schema_v001.sql");
 const V002_SQL: &str = include_str!("../../_docs/data-model/schema_v002_fts.sql");
 const V003_SQL: &str = include_str!("../../_docs/data-model/schema_v003_embeddings.sql");
 const V004_SQL: &str = include_str!("../../_docs/data-model/schema_v004_classification.sql");
+const V005_SQL: &str = include_str!("../../_docs/data-model/schema_v005_resurfacing.sql");
 
 const SNIPPET_MAX_CHARS: usize = 160;
 
@@ -61,6 +64,18 @@ pub struct AiEnrichment {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResurfaceItem {
+    pub id: String,
+    pub snippet: String,
+    pub captured_at: String,
+    pub source_kind: Option<String>,
+    pub source_app: Option<String>,
+    pub content_type: Option<String>,
+    pub short_description: Option<String>,
+    pub rank: i64,
+}
+
 #[derive(Debug)]
 pub struct Database {
     conn: Connection,
@@ -103,6 +118,7 @@ impl Database {
         self.apply_migration(MIGRATION_V002_CAPTURES_FTS, V002_SQL)?;
         self.apply_migration(MIGRATION_V003_EMBEDDINGS, V003_SQL)?;
         self.apply_migration(MIGRATION_V004_CLASSIFICATION, V004_SQL)?;
+        self.apply_migration(MIGRATION_V005_RESURFACING, V005_SQL)?;
 
         // Ensure FKs remain on after any SQL that may have set them.
         self.configure()?;
@@ -369,6 +385,89 @@ impl Database {
         Ok(())
     }
 
+    /// Captures with `captured_at` strictly before `cutoff_iso` (lexicographic ISO compare).
+    pub fn list_captures_older_than(
+        &self,
+        cutoff_iso: &str,
+    ) -> rusqlite::Result<Vec<(String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, captured_at FROM captures
+             WHERE captured_at < ?1
+             ORDER BY captured_at ASC, id ASC",
+        )?;
+        let rows = stmt.query_map(params![cutoff_iso], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
+    /// Replace the stored set for a UTC day.
+    pub fn replace_today_resurfacing(
+        &self,
+        day: &str,
+        capture_ids: &[String],
+        picked_at: &str,
+    ) -> rusqlite::Result<()> {
+        self.conn
+            .execute("DELETE FROM today_resurfacing WHERE day = ?1", params![day])?;
+        for (rank, id) in capture_ids.iter().enumerate() {
+            self.conn.execute(
+                "INSERT INTO today_resurfacing (day, capture_id, rank, picked_at)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![day, id, rank as i64, picked_at],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn get_today_resurfacing(
+        &self,
+        day: &str,
+    ) -> rusqlite::Result<Option<Vec<ResurfaceItem>>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT t.capture_id, c.original_content, c.captured_at, c.source_kind, c.source_app,
+                    m.content_type, m.short_description, t.rank
+             FROM today_resurfacing t
+             JOIN captures c ON c.id = t.capture_id
+             LEFT JOIN capture_ai_metadata m ON m.capture_id = t.capture_id
+             WHERE t.day = ?1
+             ORDER BY t.rank ASC",
+        )?;
+        let rows = stmt.query_map(params![day], |row| {
+            let content: String = row.get(1)?;
+            Ok(ResurfaceItem {
+                id: row.get(0)?,
+                snippet: truncate_snippet(&content, SNIPPET_MAX_CHARS),
+                captured_at: row.get(2)?,
+                source_kind: row.get(3)?,
+                source_app: row.get(4)?,
+                content_type: row.get(5)?,
+                short_description: row.get(6)?,
+                rank: row.get(7)?,
+            })
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        if out.is_empty() {
+            // Distinguish "no row for day" vs empty pick: check existence.
+            let count: i64 = self.conn.query_row(
+                "SELECT COUNT(*) FROM today_resurfacing WHERE day = ?1",
+                params![day],
+                |r| r.get(0),
+            )?;
+            if count == 0 {
+                return Ok(None);
+            }
+        }
+        Ok(Some(out))
+    }
+
     /// All stored embeddings as (capture_id, little-endian f32 blob).
     pub fn list_embedding_blobs(&self) -> rusqlite::Result<Vec<(String, Vec<u8>)>> {
         let mut stmt = self
@@ -547,6 +646,7 @@ mod tests {
         assert!(db.migration_applied(MIGRATION_V002_CAPTURES_FTS).unwrap());
         assert!(db.migration_applied(MIGRATION_V003_EMBEDDINGS).unwrap());
         assert!(db.migration_applied(MIGRATION_V004_CLASSIFICATION).unwrap());
+        assert!(db.migration_applied(MIGRATION_V005_RESURFACING).unwrap());
     }
 
     #[test]

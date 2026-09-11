@@ -78,5 +78,6 @@ The user is **not** required to set type at capture time; AI may fill `content_t
 - FTS5 virtual tables (#4) — see `schema_v002_fts.sql`
 - Concrete vector storage (#14) — see `schema_v003_embeddings.sql`
 - Classification status column (#16) — see `schema_v004_classification.sql`
+- Daily resurfacing picks (#24) — see `schema_v005_resurfacing.sql`
 - Capture/UI commands (#6–#10)
 - Full enrichment topics/keywords (#17)
