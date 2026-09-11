@@ -1,6 +1,7 @@
 pub mod browser_capture;
 pub mod capture;
 pub mod classify;
+pub mod contextual;
 pub mod db;
 pub mod embeddings;
 pub mod enrich;
@@ -217,6 +218,22 @@ fn ensure_today_resurfacing(app: tauri::AppHandle) -> Result<resurface::TodayRes
     .map_err(|e| e.to_string())
 }
 
+/// Contextual suggestions from the active window title/app (read-only).
+#[tauri::command]
+fn contextual_suggestions(
+    app: tauri::AppHandle,
+    limit: Option<usize>,
+    min_semantic_score: Option<f32>,
+) -> Result<Vec<search::UnifiedHit>, String> {
+    let (_dir, db) = open_app_db(&app)?;
+    contextual::contextual_suggestions(
+        &db,
+        limit.unwrap_or(contextual::DEFAULT_CONTEXTUAL_LIMIT),
+        min_semantic_score.unwrap_or(contextual::DEFAULT_MIN_SEMANTIC_SCORE),
+    )
+    .map_err(|e| e.to_string())
+}
+
 fn run_capture_now_from_shortcut(app: &tauri::AppHandle) -> Result<String, String> {
     let (dir, db) = open_app_db(app)?;
     let opts = CaptureNowOptions::default();
@@ -315,7 +332,8 @@ pub fn run() {
             related_to,
             ask_memories,
             get_today_resurfacing,
-            ensure_today_resurfacing
+            ensure_today_resurfacing,
+            contextual_suggestions
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");
