@@ -8,6 +8,7 @@ pub mod ipc;
 pub mod media;
 pub mod ollama;
 pub mod orchestrate;
+pub mod related;
 pub mod search;
 pub mod semantic;
 pub mod shortcut;
@@ -163,6 +164,17 @@ fn search_unified(
     )
 }
 
+/// Related captures for one id via embedding similarity (excludes self).
+#[tauri::command]
+fn related_to(
+    app: tauri::AppHandle,
+    capture_id: String,
+    limit: Option<usize>,
+) -> Result<Vec<related::RelatedHit>, String> {
+    let (_dir, db) = open_app_db(&app)?;
+    related::related_to(&db, &capture_id, limit.unwrap_or(10)).map_err(|e| e.to_string())
+}
+
 fn run_capture_now_from_shortcut(app: &tauri::AppHandle) -> Result<String, String> {
     let (dir, db) = open_app_db(app)?;
     let opts = CaptureNowOptions::default();
@@ -257,7 +269,8 @@ pub fn run() {
             search_semantic,
             classify_capture,
             enrich_capture,
-            search_unified
+            search_unified,
+            related_to
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");
