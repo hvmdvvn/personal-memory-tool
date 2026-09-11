@@ -59,6 +59,14 @@ fn capture_now(app: tauri::AppHandle, screenshot_on_empty: Option<bool>) -> Resu
     orchestrate::capture_now(&db, &dir, &opts).map_err(|e| e.to_string())
 }
 
+/// Recent captures for the Inbox UI (newest first).
+#[tauri::command]
+fn list_recent_captures(app: tauri::AppHandle, limit: Option<i64>) -> Result<Vec<db::CaptureSummary>, String> {
+    let (_dir, db) = open_app_db(&app)?;
+    db.list_recent_captures(limit.unwrap_or(50))
+        .map_err(|e| e.to_string())
+}
+
 fn run_capture_now_from_shortcut(app: &tauri::AppHandle) -> Result<String, String> {
     let (dir, db) = open_app_db(app)?;
     let opts = CaptureNowOptions::default();
@@ -138,7 +146,8 @@ pub fn run() {
             greet,
             capture_clipboard,
             capture_screenshot,
-            capture_now
+            capture_now,
+            list_recent_captures
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");

@@ -33,6 +33,8 @@ pub struct CaptureSummary {
     pub id: String,
     pub snippet: String,
     pub captured_at: String,
+    pub source_kind: Option<String>,
+    pub source_app: Option<String>,
 }
 
 #[derive(Debug)]
@@ -158,6 +160,36 @@ impl Database {
         )
     }
 
+    /// Recent captures for Inbox, newest first.
+    pub fn list_recent_captures(&self, limit: i64) -> rusqlite::Result<Vec<CaptureSummary>> {
+        let limit = if limit <= 0 { 50 } else { limit };
+        let mut stmt = self.conn.prepare(
+            "SELECT id, original_content, captured_at, source_kind, source_app
+             FROM captures
+             ORDER BY captured_at DESC, id DESC
+             LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![limit], |row| {
+            let id: String = row.get(0)?;
+            let content: String = row.get(1)?;
+            let captured_at: String = row.get(2)?;
+            let source_kind: Option<String> = row.get(3)?;
+            let source_app: Option<String> = row.get(4)?;
+            Ok(CaptureSummary {
+                id,
+                snippet: truncate_snippet(&content, SNIPPET_MAX_CHARS),
+                captured_at,
+                source_kind,
+                source_app,
+            })
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
     /// Exact/keyword search via FTS5. Independent of semantic search.
     pub fn search_exact(&self, query: &str) -> rusqlite::Result<Vec<CaptureSummary>> {
         let trimmed = query.trim();
@@ -166,7 +198,7 @@ impl Database {
         }
 
         let mut stmt = self.conn.prepare(
-            "SELECT c.id, c.original_content, c.captured_at
+            "SELECT c.id, c.original_content, c.captured_at, c.source_kind, c.source_app
              FROM captures_fts
              JOIN captures c ON c.rowid = captures_fts.rowid
              WHERE captures_fts MATCH ?1
@@ -177,10 +209,14 @@ impl Database {
             let id: String = row.get(0)?;
             let content: String = row.get(1)?;
             let captured_at: String = row.get(2)?;
+            let source_kind: Option<String> = row.get(3)?;
+            let source_app: Option<String> = row.get(4)?;
             Ok(CaptureSummary {
                 id,
                 snippet: truncate_snippet(&content, SNIPPET_MAX_CHARS),
                 captured_at,
+                source_kind,
+                source_app,
             })
         })?;
 
@@ -367,5 +403,52 @@ mod tests {
             .unwrap();
         assert!(db.search_exact("").unwrap().is_empty());
         assert!(db.search_exact("   ").unwrap().is_empty());
+    }
+
+    #[test]
+    fn list_recent_captures_orders_and_limits() {
+        let db = Database::open_in_memory().expect("open");
+        db.insert_raw_capture(&RawCapture {
+            id: "old".into(),
+            original_content: "older item".into(),
+            captured_at: "2026-01-01T00:00:00Z".into(),
+            source_kind: Some("clipboard".into()),
+            source_app: Some("A".into()),
+            source_title: None,
+            source_url: None,
+            source_extra: None,
+            media_path: None,
+        })
+        .unwrap();
+        db.insert_raw_capture(&RawCapture {
+            id: "new".into(),
+            original_content: "newer item".into(),
+            captured_at: "2026-06-01T00:00:00Z".into(),
+            source_kind: Some("screenshot".into()),
+            source_app: None,
+            source_title: None,
+            source_url: None,
+            source_extra: None,
+            media_path: None,
+        })
+        .unwrap();
+        db.insert_raw_capture(&RawCapture {
+            id: "mid".into(),
+            original_content: "middle item".into(),
+            captured_at: "2026-03-01T00:00:00Z".into(),
+            source_kind: None,
+            source_app: None,
+            source_title: None,
+            source_url: None,
+            source_extra: None,
+            media_path: None,
+        })
+        .unwrap();
+
+        let page = db.list_recent_captures(2).unwrap();
+        assert_eq!(page.len(), 2);
+        assert_eq!(page[0].id, "new");
+        assert_eq!(page[1].id, "mid");
+        assert_eq!(page[0].source_kind.as_deref(), Some("screenshot"));
     }
 }

@@ -1,49 +1,91 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
+import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import "./App.css";
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+type CaptureSummary = {
+  id: string;
+  snippet: string;
+  captured_at: string;
+  source_kind: string | null;
+  source_app: string | null;
+};
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+function sourceLabel(item: CaptureSummary): string {
+  const parts = [item.source_kind, item.source_app].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "unknown source";
+}
+
+function App() {
+  const [items, setItems] = useState<CaptureSummary[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const rows = await invoke<CaptureSummary[]>("list_recent_captures", {
+        limit: 50,
+      });
+      setItems(rows);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void listen("capture-shortcut", () => {
+      void refresh();
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, [refresh]);
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <main className="inbox">
+      <header className="inbox-header">
+        <div>
+          <p className="eyebrow">Personal Memory</p>
+          <h1>Inbox</h1>
+          <p className="lede">Recent captures. Capture first; organize later.</p>
+        </div>
+        <button type="button" onClick={() => void refresh()} disabled={loading}>
+          {loading ? "Loading…" : "Refresh"}
+        </button>
+      </header>
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
+      {error ? <p className="error">{error}</p> : null}
 
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
+      {!loading && items.length === 0 ? (
+        <p className="empty">
+          No captures yet. Press Ctrl+Shift+Space anywhere to save something.
+        </p>
+      ) : (
+        <ul className="capture-list">
+          {items.map((item) => (
+            <li key={item.id} className="capture-item">
+              <div className="meta">
+                <time dateTime={item.captured_at}>{item.captured_at}</time>
+                <span>{sourceLabel(item)}</span>
+              </div>
+              <p className="snippet">
+                {item.snippet.trim() ? item.snippet : "(no text — media/context only)"}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
     </main>
   );
 }
