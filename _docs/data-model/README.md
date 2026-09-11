@@ -3,7 +3,7 @@
 **Migration identity:** `v001_captures`  
 **Schema file:** [`schema_v001.sql`](./schema_v001.sql)
 
-This is a **design artifact** for issue [#2](https://github.com/hvmdvvn/personal-memory-tool/issues/2). It is not applied by the app yet. Issue [#3](https://github.com/hvmdvvn/personal-memory-tool/issues/3) will open SQLite, run migrations (starting with this identity), and expose insert/read APIs.
+This design artifact is from issue [#2](https://github.com/hvmdvvn/personal-memory-tool/issues/2). Issue [#3](https://github.com/hvmdvvn/personal-memory-tool/issues/3) applies it via `src-tauri/src/db.rs` (migration identity `v001_captures`).
 
 ## Invariant
 
