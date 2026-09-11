@@ -18,6 +18,7 @@ What exists in the repository today:
 - **Data model design (v001)** — `_docs/data-model/` (`schema_v001.sql` + design note)
 - **SQLite persistence** — `src-tauri/src/db.rs`: open/migrate `v001_captures` + `v002_captures_fts`, insert/get raw captures, `search_exact` (FTS5)
 - **Global shortcut stub** — `Ctrl+Shift+Space` via `tauri-plugin-global-shortcut`; emits `capture-shortcut` ack (no capture yet)
+- **Clipboard capture** — `capture_clipboard` Tauri command + `capture` module; stores raw row with `source_kind=clipboard`
 - Planning and context docs under `_docs/`, plus agent entrypoints (`AGENTS.md`, `CLAUDE.md`)
 
 Not implemented yet: capture engine, AI pipeline, browser extension, search, connections, resurfacing, or personal assistant.

@@ -145,6 +145,19 @@ impl Database {
             .optional()
     }
 
+    pub fn count_raw_captures(&self) -> rusqlite::Result<i64> {
+        self.conn
+            .query_row("SELECT COUNT(*) FROM captures", [], |row| row.get(0))
+    }
+
+    pub fn count_ai_metadata_for(&self, capture_id: &str) -> rusqlite::Result<i64> {
+        self.conn.query_row(
+            "SELECT COUNT(*) FROM capture_ai_metadata WHERE capture_id = ?1",
+            params![capture_id],
+            |row| row.get(0),
+        )
+    }
+
     /// Exact/keyword search via FTS5. Independent of semantic search.
     pub fn search_exact(&self, query: &str) -> rusqlite::Result<Vec<CaptureSummary>> {
         let trimmed = query.trim();
