@@ -100,6 +100,10 @@ ollama pull nomic-embed-text
 ollama pull llama3.2
 ```
 
+Optional `config.json` in the app data directory (Tauri commands `get_config` / `set_config`) overrides Ollama URL, chat/embed models, hotkey string, and optional `data_dir`. Defaults stay on loopback; non-loopback Ollama URLs log a startup privacy warning. Cloud LLM providers are out of scope for v1.
+
 ## Docs
 
-See `_docs/` and `AGENTS.md` for architecture, process, and agent guidance.
+- [`_docs/windows-dev-setup.md`](_docs/windows-dev-setup.md) — Windows toolchain, extension, Ollama, troubleshooting
+- [`_docs/smoke-capture.md`](_docs/smoke-capture.md) — capture → Inbox smoke checklist
+- `_docs/` and `AGENTS.md` — architecture, process, agent guidance

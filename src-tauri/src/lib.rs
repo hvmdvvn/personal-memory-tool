@@ -1,6 +1,7 @@
 pub mod browser_capture;
 pub mod capture;
 pub mod classify;
+pub mod config;
 pub mod contextual;
 pub mod db;
 pub mod embeddings;
@@ -33,9 +34,22 @@ fn app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
 fn open_app_db(app: &tauri::AppHandle) -> Result<(PathBuf, Database), String> {
     let dir = app_data_dir(app)?;
-    let db_path = dir.join("memory.sqlite");
+    let cfg = config::AppConfig::load_from_data_dir(&dir)?;
+    let data_dir = if let Some(ref override_dir) = cfg.data_dir {
+        let p = PathBuf::from(override_dir);
+        std::fs::create_dir_all(&p).map_err(|e| format!("create data_dir: {e}"))?;
+        p
+    } else {
+        dir
+    };
+    let db_path = data_dir.join("memory.sqlite");
     let db = Database::open(&db_path).map_err(|e| format!("open db: {e}"))?;
-    Ok((dir, db))
+    Ok((data_dir, db))
+}
+
+fn load_app_config(app: &tauri::AppHandle) -> Result<config::AppConfig, String> {
+    let dir = app_data_dir(app)?;
+    config::AppConfig::load_from_data_dir(&dir)
 }
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -81,21 +95,18 @@ fn list_recent_captures(app: tauri::AppHandle, limit: Option<i64>) -> Result<Vec
 
 /// Check local Ollama HTTP API reachability and list model names.
 #[tauri::command]
-fn ollama_health() -> ollama::OllamaHealth {
-    ollama::check_ollama_health(&ollama::ollama_base_url())
+fn ollama_health(app: tauri::AppHandle) -> Result<ollama::OllamaHealth, String> {
+    let cfg = load_app_config(&app)?;
+    Ok(ollama::check_ollama_health(&cfg.ollama_base_url))
 }
 
 /// Generate and store an embedding for one capture's original text.
 #[tauri::command]
 fn embed_capture(app: tauri::AppHandle, capture_id: String) -> Result<String, String> {
     let (_dir, db) = open_app_db(&app)?;
-    embeddings::embed_capture(
-        &db,
-        &capture_id,
-        &ollama::ollama_base_url(),
-        embeddings::DEFAULT_EMBED_MODEL,
-    )
-    .map_err(|e| e.to_string())
+    let cfg = load_app_config(&app)?;
+    embeddings::embed_capture(&db, &capture_id, &cfg.ollama_base_url, &cfg.embed_model)
+        .map_err(|e| e.to_string())
 }
 
 /// Semantic nearest-neighbor search over stored embeddings.
@@ -106,8 +117,23 @@ fn search_semantic(
     limit: Option<usize>,
 ) -> Result<Vec<semantic::SemanticHit>, String> {
     let (_dir, db) = open_app_db(&app)?;
-    semantic::search_semantic(&db, &query, limit.unwrap_or(10), &ollama::ollama_base_url())
-        .map_err(|e| e.to_string())
+    let cfg = load_app_config(&app)?;
+    semantic::search_semantic_with(
+        &db,
+        &query,
+        limit.unwrap_or(10),
+        &cfg.ollama_base_url,
+        &cfg.embed_model,
+        |url, body| {
+            ureq::post(url)
+                .timeout(std::time::Duration::from_secs(60))
+                .set("Content-Type", "application/json")
+                .send_string(body)
+                .map_err(|e| e.to_string())
+                .and_then(|r| r.into_string().map_err(|e| e.to_string()))
+        },
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// Classify one capture's type via local Ollama; writes AI metadata only.
@@ -117,13 +143,9 @@ fn classify_capture(
     capture_id: String,
 ) -> Result<db::AiClassification, String> {
     let (_dir, db) = open_app_db(&app)?;
-    classify::classify_capture(
-        &db,
-        &capture_id,
-        &ollama::ollama_base_url(),
-        classify::DEFAULT_CLASSIFY_MODEL,
-    )
-    .map_err(|e| e.to_string())
+    let cfg = load_app_config(&app)?;
+    classify::classify_capture(&db, &capture_id, &cfg.ollama_base_url, &cfg.chat_model)
+        .map_err(|e| e.to_string())
 }
 
 /// Enrich one capture with topics/keywords/entities/short description via Ollama.
@@ -133,13 +155,9 @@ fn enrich_capture(
     capture_id: String,
 ) -> Result<db::AiEnrichment, String> {
     let (_dir, db) = open_app_db(&app)?;
-    enrich::enrich_capture(
-        &db,
-        &capture_id,
-        &ollama::ollama_base_url(),
-        enrich::DEFAULT_ENRICH_MODEL,
-    )
-    .map_err(|e| e.to_string())
+    let cfg = load_app_config(&app)?;
+    enrich::enrich_capture(&db, &capture_id, &cfg.ollama_base_url, &cfg.chat_model)
+        .map_err(|e| e.to_string())
 }
 
 /// Unified exact (FTS) + semantic search with match reasons.
@@ -153,6 +171,7 @@ fn search_unified(
     to_captured_at: Option<String>,
 ) -> Result<Vec<search::UnifiedHit>, String> {
     let (_dir, db) = open_app_db(&app)?;
+    let cfg = load_app_config(&app)?;
     let filters = search::SearchFilters {
         content_type,
         from_captured_at,
@@ -162,7 +181,7 @@ fn search_unified(
         &db,
         &query,
         limit.unwrap_or(20),
-        &ollama::ollama_base_url(),
+        &cfg.ollama_base_url,
         &filters,
     )
 }
@@ -186,11 +205,12 @@ fn ask_memories(
     top_k: Option<usize>,
 ) -> Result<qa::QaAnswer, String> {
     let (_dir, db) = open_app_db(&app)?;
+    let cfg = load_app_config(&app)?;
     qa::ask_memories(
         &db,
         &question,
-        &ollama::ollama_base_url(),
-        qa::DEFAULT_QA_MODEL,
+        &cfg.ollama_base_url,
+        &cfg.chat_model,
         top_k.unwrap_or(qa::DEFAULT_TOP_K),
     )
     .map_err(|e| e.to_string())
@@ -234,6 +254,21 @@ fn contextual_suggestions(
     .map_err(|e| e.to_string())
 }
 
+/// Read local config (models, Ollama URL, hotkey string, optional data_dir).
+#[tauri::command]
+fn get_config(app: tauri::AppHandle) -> Result<config::AppConfig, String> {
+    load_app_config(&app)
+}
+
+/// Write local config.json under the app data directory. Hotkey rebind may need restart.
+#[tauri::command]
+fn set_config(app: tauri::AppHandle, config: config::AppConfig) -> Result<config::AppConfig, String> {
+    let dir = app_data_dir(&app)?;
+    crate::config::warn_if_non_loopback(&config);
+    config.save_to_data_dir(&dir)?;
+    Ok(config)
+}
+
 fn run_capture_now_from_shortcut(app: &tauri::AppHandle) -> Result<String, String> {
     let (dir, db) = open_app_db(app)?;
     let opts = CaptureNowOptions::default();
@@ -252,6 +287,10 @@ pub fn run() {
         .setup(|app| {
             match app.path().app_data_dir() {
                 Ok(dir) => {
+                    match config::AppConfig::load_from_data_dir(&dir) {
+                        Ok(cfg) => config::warn_if_non_loopback(&cfg),
+                        Err(e) => eprintln!("[config] load failed: {e}"),
+                    }
                     if let Err(e) = ipc::start_extension_ipc_server(dir) {
                         eprintln!("[ipc] failed to start extension IPC: {e}");
                     }
@@ -333,7 +372,9 @@ pub fn run() {
             ask_memories,
             get_today_resurfacing,
             ensure_today_resurfacing,
-            contextual_suggestions
+            contextual_suggestions,
+            get_config,
+            set_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");

@@ -36,6 +36,7 @@ What exists in the repository today:
 - **Assistant / Connections UI** — chat panel + related-items browser in the web UI
 - **Daily resurfacing** — `ensure_today_resurfacing` / `get_today_resurfacing` (v005); Today view
 - **Contextual resurfacing** — `contextual_suggestions` from active window title/app (read-only)
+- **Config + privacy** — `config.json` (get/set); loopback warning for non-local Ollama
 - Planning and context docs under `_docs/`, plus agent entrypoints (`AGENTS.md`, `CLAUDE.md`)
 
 Not implemented yet: capture engine, AI pipeline, browser extension, search, connections, resurfacing, or personal assistant.
