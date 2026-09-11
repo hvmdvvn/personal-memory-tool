@@ -217,6 +217,31 @@ impl Database {
             .optional()
     }
 
+    /// All stored embeddings as (capture_id, little-endian f32 blob).
+    pub fn list_embedding_blobs(&self) -> rusqlite::Result<Vec<(String, Vec<u8>)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT capture_id, vector_blob FROM capture_embeddings")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
+    pub fn summary_for_capture(&self, id: &str) -> rusqlite::Result<Option<CaptureSummary>> {
+        Ok(self.get_raw_capture(id)?.map(|c| CaptureSummary {
+            id: c.id,
+            snippet: truncate_snippet(&c.original_content, SNIPPET_MAX_CHARS),
+            captured_at: c.captured_at,
+            source_kind: c.source_kind,
+            source_app: c.source_app,
+        }))
+    }
+
     /// Recent captures for Inbox, newest first.
     pub fn list_recent_captures(&self, limit: i64) -> rusqlite::Result<Vec<CaptureSummary>> {
         let limit = if limit <= 0 { 50 } else { limit };

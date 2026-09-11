@@ -6,6 +6,7 @@ pub mod ipc;
 pub mod media;
 pub mod ollama;
 pub mod orchestrate;
+pub mod semantic;
 pub mod shortcut;
 pub mod window_context;
 
@@ -88,6 +89,18 @@ fn embed_capture(app: tauri::AppHandle, capture_id: String) -> Result<String, St
         embeddings::DEFAULT_EMBED_MODEL,
     )
     .map_err(|e| e.to_string())
+}
+
+/// Semantic nearest-neighbor search over stored embeddings.
+#[tauri::command]
+fn search_semantic(
+    app: tauri::AppHandle,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<semantic::SemanticHit>, String> {
+    let (_dir, db) = open_app_db(&app)?;
+    semantic::search_semantic(&db, &query, limit.unwrap_or(10), &ollama::ollama_base_url())
+        .map_err(|e| e.to_string())
 }
 
 fn run_capture_now_from_shortcut(app: &tauri::AppHandle) -> Result<String, String> {
@@ -180,7 +193,8 @@ pub fn run() {
             capture_now,
             list_recent_captures,
             ollama_health,
-            embed_capture
+            embed_capture,
+            search_semantic
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");

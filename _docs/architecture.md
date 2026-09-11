@@ -26,6 +26,7 @@ What exists in the repository today:
 - **Browser extension IPC** — MV3 `extension/` pings desktop on `127.0.0.1:17832` with shared token; `POST /capture` stores URL/title/selection
 - **Ollama health** — `ollama_health` probes local `/api/tags` (mock-tested; default `127.0.0.1:11434`)
 - **Embeddings** — `embed_capture` stores vectors in `capture_embeddings` (v003); default model `nomic-embed-text`
+- **Semantic search** — `search_semantic` cosine k-NN over stored embeddings
 - Planning and context docs under `_docs/`, plus agent entrypoints (`AGENTS.md`, `CLAUDE.md`)
 
 Not implemented yet: capture engine, AI pipeline, browser extension, search, connections, resurfacing, or personal assistant.
