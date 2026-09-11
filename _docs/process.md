@@ -12,6 +12,31 @@ Do **not** create duplicate task-tracking systems (no second backlog files, shad
 
 Do **not** copy full task bodies from GitHub Issues back into `tasks.md`. Keep `tasks.md` as an overview/index.
 
+## Roles
+
+- **PM** — grooms a task before anyone implements it, follows `_docs/team/pm.md`.
+- **Engineer** — implements one groomed task, follows `_docs/team/software-engineer.md`.
+- **QA** — checks the result against the acceptance criteria, follows `_docs/team/qa-engineer.md`.
+
+## Grooming and implementation workflow
+
+1. Select one task from `tasks.md` / GitHub Issues.
+2. PM grooms the GitHub issue before implementation.
+3. Review the groomed issue.
+4. Engineer implements only the groomed scope.
+5. Engineer tests the result against the acceptance criteria.
+6. Close the issue only when the acceptance criteria are satisfied.
+
+Notes:
+
+- `tasks.md` remains the backlog overview.
+- GitHub Issues remain the source of truth for individual tasks.
+- Do not create another task-management system.
+- Do not duplicate the backlog inside `_docs/`.
+- Grooming happens before implementation.
+- The PM does not write application code.
+- PM rewrites issues using `_docs/task-template.md` (see `_docs/team/pm.md`).
+
 ## Working on a task
 
 1. Identify the single GitHub issue to implement (from the user request or `_docs/tasks.md`).
