@@ -27,6 +27,7 @@ What exists in the repository today:
 - **Ollama health** — `ollama_health` probes local `/api/tags` (mock-tested; default `127.0.0.1:11434`)
 - **Embeddings** — `embed_capture` stores vectors in `capture_embeddings` (v003); default model `nomic-embed-text`
 - **Semantic search** — `search_semantic` cosine k-NN over stored embeddings
+- **Classification** — `classify_capture` via Ollama generate; writes `content_type`/`confidence`/`processing_status` (v004)
 - Planning and context docs under `_docs/`, plus agent entrypoints (`AGENTS.md`, `CLAUDE.md`)
 
 Not implemented yet: capture engine, AI pipeline, browser extension, search, connections, resurfacing, or personal assistant.

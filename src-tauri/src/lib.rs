@@ -1,5 +1,6 @@
 pub mod browser_capture;
 pub mod capture;
+pub mod classify;
 pub mod db;
 pub mod embeddings;
 pub mod ipc;
@@ -103,6 +104,22 @@ fn search_semantic(
         .map_err(|e| e.to_string())
 }
 
+/// Classify one capture's type via local Ollama; writes AI metadata only.
+#[tauri::command]
+fn classify_capture(
+    app: tauri::AppHandle,
+    capture_id: String,
+) -> Result<db::AiClassification, String> {
+    let (_dir, db) = open_app_db(&app)?;
+    classify::classify_capture(
+        &db,
+        &capture_id,
+        &ollama::ollama_base_url(),
+        classify::DEFAULT_CLASSIFY_MODEL,
+    )
+    .map_err(|e| e.to_string())
+}
+
 fn run_capture_now_from_shortcut(app: &tauri::AppHandle) -> Result<String, String> {
     let (dir, db) = open_app_db(app)?;
     let opts = CaptureNowOptions::default();
@@ -194,7 +211,8 @@ pub fn run() {
             list_recent_captures,
             ollama_health,
             embed_capture,
-            search_semantic
+            search_semantic,
+            classify_capture
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");

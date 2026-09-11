@@ -87,10 +87,13 @@ Health check from the app: Tauri command `ollama_health` (returns `{ ok, base_ur
 
 Default embedding model: **`nomic-embed-text`** (`embeddings::DEFAULT_EMBED_MODEL`). Embed a capture with Tauri command `embed_capture` `{ captureId }`. Vectors are stored in SQLite table `capture_embeddings` (migration `v003_embeddings`), not the sqlite-vec extension.
 
+Default classify model: **`llama3.2`** (`classify::DEFAULT_CLASSIFY_MODEL`). Classify a capture with Tauri command `classify_capture` `{ captureId }` — writes `content_type`, `confidence`, and `processing_status` on `capture_ai_metadata` only (migration `v004_classification`).
+
 Pull models as needed:
 
 ```bash
 ollama pull nomic-embed-text
+ollama pull llama3.2
 ```
 
 ## Docs

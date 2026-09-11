@@ -43,6 +43,7 @@ A row in `captures` does **not** require a matching `capture_ai_metadata` row.
 | `entities_json` | JSON array of entity strings (or simple objects serialized as JSON). |
 | `short_description` | Short AI-written description; never replaces `original_content`. |
 | `embedding_ref` | Opaque reference/slot for a vector produced later (#14). Not the vector bytes. |
+| `processing_status` | Lightweight AI job status (`classified` / `failed`); added in `v004_classification` (#16). NULL until classified. |
 | `updated_at` | Last time this metadata row was written. |
 
 Absence of a row means “not yet processed” (or processing never started).
@@ -76,5 +77,6 @@ The user is **not** required to set type at capture time; AI may fill `content_t
 
 - FTS5 virtual tables (#4) — see `schema_v002_fts.sql`
 - Concrete vector storage (#14) — see `schema_v003_embeddings.sql`
+- Classification status column (#16) — see `schema_v004_classification.sql`
 - Capture/UI commands (#6–#10)
-- Prompt-version or full AI job status machines (#16 / #17)
+- Full enrichment topics/keywords (#17)

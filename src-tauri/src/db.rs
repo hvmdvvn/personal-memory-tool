@@ -1,6 +1,6 @@
 //! Local SQLite persistence for raw captures.
 //!
-//! Migrations: `v001_captures` (schema), `v002_captures_fts` (FTS5 exact search).
+//! Migrations: `v001_captures`, `v002_captures_fts`, `v003_embeddings`, `v004_classification`.
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -10,10 +10,12 @@ use std::path::Path;
 pub const MIGRATION_V001_CAPTURES: &str = "v001_captures";
 pub const MIGRATION_V002_CAPTURES_FTS: &str = "v002_captures_fts";
 pub const MIGRATION_V003_EMBEDDINGS: &str = "v003_embeddings";
+pub const MIGRATION_V004_CLASSIFICATION: &str = "v004_classification";
 
 const V001_SQL: &str = include_str!("../../_docs/data-model/schema_v001.sql");
 const V002_SQL: &str = include_str!("../../_docs/data-model/schema_v002_fts.sql");
 const V003_SQL: &str = include_str!("../../_docs/data-model/schema_v003_embeddings.sql");
+const V004_SQL: &str = include_str!("../../_docs/data-model/schema_v004_classification.sql");
 
 const SNIPPET_MAX_CHARS: usize = 160;
 
@@ -37,6 +39,15 @@ pub struct CaptureSummary {
     pub captured_at: String,
     pub source_kind: Option<String>,
     pub source_app: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AiClassification {
+    pub capture_id: String,
+    pub content_type: Option<String>,
+    pub confidence: Option<f64>,
+    pub processing_status: Option<String>,
+    pub updated_at: String,
 }
 
 #[derive(Debug)]
@@ -80,6 +91,7 @@ impl Database {
         self.apply_migration(MIGRATION_V001_CAPTURES, V001_SQL)?;
         self.apply_migration(MIGRATION_V002_CAPTURES_FTS, V002_SQL)?;
         self.apply_migration(MIGRATION_V003_EMBEDDINGS, V003_SQL)?;
+        self.apply_migration(MIGRATION_V004_CLASSIFICATION, V004_SQL)?;
 
         // Ensure FKs remain on after any SQL that may have set them.
         self.configure()?;
@@ -213,6 +225,58 @@ impl Database {
                 "SELECT embedding_ref FROM capture_ai_metadata WHERE capture_id = ?1",
                 params![capture_id],
                 |row| row.get(0),
+            )
+            .optional()
+    }
+
+    /// Upsert classification fields only; preserves embedding_ref and enrichment columns.
+    pub fn upsert_classification(
+        &self,
+        capture_id: &str,
+        content_type: Option<&str>,
+        confidence: Option<f64>,
+        processing_status: &str,
+        updated_at: &str,
+    ) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT INTO capture_ai_metadata (
+                capture_id, content_type, confidence, topics_json, keywords_json, entities_json,
+                short_description, embedding_ref, updated_at, processing_status
+             ) VALUES (?1, ?2, ?3, NULL, NULL, NULL, NULL, NULL, ?4, ?5)
+             ON CONFLICT(capture_id) DO UPDATE SET
+               content_type = excluded.content_type,
+               confidence = excluded.confidence,
+               processing_status = excluded.processing_status,
+               updated_at = excluded.updated_at",
+            params![
+                capture_id,
+                content_type,
+                confidence,
+                updated_at,
+                processing_status
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_ai_classification(
+        &self,
+        capture_id: &str,
+    ) -> rusqlite::Result<Option<AiClassification>> {
+        self.conn
+            .query_row(
+                "SELECT capture_id, content_type, confidence, processing_status, updated_at
+                 FROM capture_ai_metadata WHERE capture_id = ?1",
+                params![capture_id],
+                |row| {
+                    Ok(AiClassification {
+                        capture_id: row.get(0)?,
+                        content_type: row.get(1)?,
+                        confidence: row.get(2)?,
+                        processing_status: row.get(3)?,
+                        updated_at: row.get(4)?,
+                    })
+                },
             )
             .optional()
     }
@@ -394,6 +458,7 @@ mod tests {
         assert!(db.migration_applied(MIGRATION_V001_CAPTURES).unwrap());
         assert!(db.migration_applied(MIGRATION_V002_CAPTURES_FTS).unwrap());
         assert!(db.migration_applied(MIGRATION_V003_EMBEDDINGS).unwrap());
+        assert!(db.migration_applied(MIGRATION_V004_CLASSIFICATION).unwrap());
     }
 
     #[test]
