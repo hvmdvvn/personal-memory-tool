@@ -3,7 +3,7 @@
 use crate::browser_capture::{save_browser_capture, BrowserCapturePayload};
 use crate::db::Database;
 use serde_json::json;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -156,6 +156,7 @@ pub fn start_extension_ipc_server(app_data_dir: PathBuf) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]

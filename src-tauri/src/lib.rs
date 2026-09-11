@@ -3,6 +3,7 @@ pub mod capture;
 pub mod db;
 pub mod ipc;
 pub mod media;
+pub mod ollama;
 pub mod orchestrate;
 pub mod shortcut;
 pub mod window_context;
@@ -67,6 +68,12 @@ fn list_recent_captures(app: tauri::AppHandle, limit: Option<i64>) -> Result<Vec
     let (_dir, db) = open_app_db(&app)?;
     db.list_recent_captures(limit.unwrap_or(50))
         .map_err(|e| e.to_string())
+}
+
+/// Check local Ollama HTTP API reachability and list model names.
+#[tauri::command]
+fn ollama_health() -> ollama::OllamaHealth {
+    ollama::check_ollama_health(&ollama::ollama_base_url())
 }
 
 fn run_capture_now_from_shortcut(app: &tauri::AppHandle) -> Result<String, String> {
@@ -157,7 +164,8 @@ pub fn run() {
             capture_clipboard,
             capture_screenshot,
             capture_now,
-            list_recent_captures
+            list_recent_captures,
+            ollama_health
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");

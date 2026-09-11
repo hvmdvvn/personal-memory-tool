@@ -72,6 +72,19 @@ The SQLite row references that path in `media_path` (`source_kind = screenshot`)
 
 See [`extension/README.md`](extension/README.md). The desktop app serves authenticated loopback IPC on `http://127.0.0.1:17832` (token in `src-tauri/src/ipc.rs`).
 
+## Ollama (local AI)
+
+Install and run [Ollama](https://ollama.com/) so the HTTP API is available on the machine (default `http://127.0.0.1:11434`).
+
+Optional override:
+
+```bash
+# with or without scheme
+set OLLAMA_HOST=127.0.0.1:11434
+```
+
+Health check from the app: Tauri command `ollama_health` (returns `{ ok, base_url, models, error }`). Pull models as needed later for embeddings/chat (issues #14+).
+
 ## Docs
 
 See `_docs/` and `AGENTS.md` for architecture, process, and agent guidance.
