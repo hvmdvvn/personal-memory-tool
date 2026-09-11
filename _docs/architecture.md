@@ -30,6 +30,7 @@ What exists in the repository today:
 - **Classification** — `classify_capture` via Ollama generate; writes `content_type`/`confidence`/`processing_status` (v004)
 - **Enrichment** — `enrich_capture` topics/keywords/entities/short_description (`enrich_v1` prompt id)
 - **Unified search** — `search_unified` merges FTS + semantic with `exact`/`semantic`/`both` reasons
+- **Search UI** — Inbox/Search nav; query + type/date filters calling `search_unified`
 - Planning and context docs under `_docs/`, plus agent entrypoints (`AGENTS.md`, `CLAUDE.md`)
 
 Not implemented yet: capture engine, AI pipeline, browser extension, search, connections, resurfacing, or personal assistant.

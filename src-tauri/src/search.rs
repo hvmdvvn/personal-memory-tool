@@ -31,8 +31,17 @@ pub struct UnifiedHit {
     pub source_kind: Option<String>,
     pub source_app: Option<String>,
     pub match_reason: String,
-    /// Cosine score when semantic contributed; `null` for exact-only hits.
+    /// Cosine score when semantic contributed; approximate FTS rank for exact-only.
     pub score: Option<f32>,
+    /// AI classification when present.
+    pub content_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SearchFilters {
+    pub content_type: Option<String>,
+    pub from_captured_at: Option<String>,
+    pub to_captured_at: Option<String>,
 }
 
 /// Merge exact + semantic hit lists. Pure function for unit tests.
@@ -59,6 +68,7 @@ pub fn merge_exact_and_semantic(
                 match_reason: MatchReason::Exact.as_str().into(),
                 // Slight FTS rank proxy so exact-only can sort stably (higher better).
                 score: Some(1.0 - (rank as f32) * 0.001),
+                content_type: None,
             },
         );
     }
@@ -80,6 +90,7 @@ pub fn merge_exact_and_semantic(
                         source_app: s.source_app.clone(),
                         match_reason: MatchReason::Semantic.as_str().into(),
                         score: Some(s.score),
+                        content_type: None,
                     },
                 );
             }
@@ -111,12 +122,54 @@ fn reason_rank(reason: &str) -> u8 {
     }
 }
 
-/// Run FTS + semantic (soft-fail semantic → empty), then merge.
+fn attach_content_types(db: &Database, hits: &mut [UnifiedHit]) -> Result<(), String> {
+    for hit in hits.iter_mut() {
+        if let Some(meta) = db
+            .get_ai_classification(&hit.id)
+            .map_err(|e| format!("ai metadata: {e}"))?
+        {
+            hit.content_type = meta.content_type;
+        }
+    }
+    Ok(())
+}
+
+pub fn apply_filters(hits: Vec<UnifiedHit>, filters: &SearchFilters) -> Vec<UnifiedHit> {
+    hits.into_iter()
+        .filter(|h| {
+            if let Some(want) = filters.content_type.as_deref() {
+                let want = want.trim();
+                if !want.is_empty() && want != "any" {
+                    match h.content_type.as_deref() {
+                        Some(t) if t == want => {}
+                        _ => return false,
+                    }
+                }
+            }
+            if let Some(from) = filters.from_captured_at.as_deref() {
+                let from = from.trim();
+                if !from.is_empty() && h.captured_at.as_str() < from {
+                    return false;
+                }
+            }
+            if let Some(to) = filters.to_captured_at.as_deref() {
+                let to = to.trim();
+                if !to.is_empty() && h.captured_at.as_str() > to {
+                    return false;
+                }
+            }
+            true
+        })
+        .collect()
+}
+
+/// Run FTS + semantic (soft-fail semantic → empty), then merge and filter.
 pub fn search_unified(
     db: &Database,
     query: &str,
     limit: usize,
     base_url: &str,
+    filters: &SearchFilters,
 ) -> Result<Vec<UnifiedHit>, String> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
@@ -135,7 +188,10 @@ pub fn search_unified(
         }
     };
 
-    Ok(merge_exact_and_semantic(&exact, &semantic, limit))
+    let mut merged = merge_exact_and_semantic(&exact, &semantic, limit.max(50));
+    attach_content_types(db, &mut merged)?;
+    let filtered = apply_filters(merged, filters);
+    Ok(filtered.into_iter().take(limit).collect())
 }
 
 /// Test/helper path: semantic from a precomputed query vector (no HTTP).
@@ -144,6 +200,7 @@ pub fn search_unified_with_vector(
     query: &str,
     query_vector: &[f32],
     limit: usize,
+    filters: &SearchFilters,
 ) -> Result<Vec<UnifiedHit>, String> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
@@ -154,7 +211,10 @@ pub fn search_unified_with_vector(
         .map_err(|e| format!("exact search: {e}"))?;
     let semantic = search_semantic_with_vector(db, query_vector, limit.max(50))
         .map_err(|e| format!("semantic search: {e}"))?;
-    Ok(merge_exact_and_semantic(&exact, &semantic, limit))
+    let mut merged = merge_exact_and_semantic(&exact, &semantic, limit.max(50));
+    attach_content_types(db, &mut merged)?;
+    let filtered = apply_filters(merged, filters);
+    Ok(filtered.into_iter().take(limit).collect())
 }
 
 #[cfg(test)]
@@ -241,7 +301,8 @@ mod tests {
         db.upsert_embedding("c", "m", 3, &blob(vc), "t", "ref:c")
             .unwrap();
 
-        let hits = search_unified_with_vector(&db, "discipline", &q, 10).unwrap();
+        let hits = search_unified_with_vector(&db, "discipline", &q, 10, &SearchFilters::default())
+            .unwrap();
         let a = hits.iter().find(|h| h.id == "a").expect("a");
         assert_eq!(a.match_reason, "both");
         assert!(hits.iter().any(|h| h.id == "c" && h.match_reason == "semantic"));
@@ -252,8 +313,44 @@ mod tests {
     #[test]
     fn empty_query_skips_work() {
         let db = Database::open_in_memory().unwrap();
-        assert!(search_unified_with_vector(&db, "  ", &[1.0], 5)
+        assert!(search_unified_with_vector(&db, "  ", &[1.0], 5, &SearchFilters::default())
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn filters_by_type_and_date() {
+        let hits = vec![
+            UnifiedHit {
+                id: "1".into(),
+                snippet: "a".into(),
+                captured_at: "2026-01-01T00:00:00Z".into(),
+                source_kind: None,
+                source_app: None,
+                match_reason: "exact".into(),
+                score: Some(1.0),
+                content_type: Some("task".into()),
+            },
+            UnifiedHit {
+                id: "2".into(),
+                snippet: "b".into(),
+                captured_at: "2026-06-01T00:00:00Z".into(),
+                source_kind: None,
+                source_app: None,
+                match_reason: "exact".into(),
+                score: Some(1.0),
+                content_type: Some("idea".into()),
+            },
+        ];
+        let filtered = apply_filters(
+            hits,
+            &SearchFilters {
+                content_type: Some("idea".into()),
+                from_captured_at: Some("2026-03-01".into()),
+                to_captured_at: None,
+            },
+        );
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, "2");
     }
 }

@@ -144,13 +144,22 @@ fn search_unified(
     app: tauri::AppHandle,
     query: String,
     limit: Option<usize>,
+    content_type: Option<String>,
+    from_captured_at: Option<String>,
+    to_captured_at: Option<String>,
 ) -> Result<Vec<search::UnifiedHit>, String> {
     let (_dir, db) = open_app_db(&app)?;
+    let filters = search::SearchFilters {
+        content_type,
+        from_captured_at,
+        to_captured_at,
+    };
     search::search_unified(
         &db,
         &query,
         limit.unwrap_or(20),
         &ollama::ollama_base_url(),
+        &filters,
     )
 }
 

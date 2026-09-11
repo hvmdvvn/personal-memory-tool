@@ -20,10 +20,27 @@ body {
   min-height: 100vh;
 }
 
-.inbox {
+.app-shell {
   max-width: 42rem;
   margin: 0 auto;
-  padding: 2rem 1.25rem 3rem;
+  padding: 1.25rem 1.25rem 3rem;
+}
+
+.top-nav {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.top-nav .nav-active {
+  border-color: #57534e;
+  background: #f5f5f4;
+  font-weight: 600;
+}
+
+.inbox {
+  margin: 0;
+  padding: 0;
 }
 
 .inbox-header {
@@ -103,4 +120,35 @@ button:disabled {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.search-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-bottom: 1.5rem;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.75rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: #57534e;
+}
+
+.field input,
+.field select {
+  font: inherit;
+  color: #1c1917;
+  border: 1px solid #d6d3d1;
+  background: #fff;
+  border-radius: 0.35rem;
+  padding: 0.45rem 0.6rem;
 }
