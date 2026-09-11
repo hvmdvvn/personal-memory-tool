@@ -42,6 +42,22 @@ There is no frontend unit-test script yet; do not invent one until a harness is 
 npm run tauri build
 ```
 
+## Global shortcut
+
+Default hotkey: **Ctrl+Shift+Space** (defined as `DEFAULT_GLOBAL_SHORTCUT` in `src-tauri/src/shortcut.rs`).
+
+To change it: update that constant **and** the matching `Shortcut::new(...)` / `sc.matches(...)` wiring in `src-tauri/src/lib.rs` so they stay in sync. A config-file remap lands later (issue #28).
+
+On press, the app logs `[shortcut] capture-shortcut-ack` and emits the Tauri event `capture-shortcut` with payload `capture-shortcut-ack`. No capture is saved yet (see issue #9).
+
+### Manual test (Windows)
+
+1. Run `npm run tauri dev` and wait until the window is up.
+2. Focus another application (browser, Notepad, etc.).
+3. Press **Ctrl+Shift+Space**.
+4. Confirm the stub ack in the terminal (`[shortcut] capture-shortcut-ack`) and/or that the `capture-shortcut` event fires if you listen in the UI.
+5. If nothing happens, another app may already own that hotkey—check the terminal for `failed to register`.
+
 ## Docs
 
 See `_docs/` and `AGENTS.md` for architecture, process, and agent guidance.
