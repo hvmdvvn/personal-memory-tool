@@ -89,6 +89,8 @@ Default embedding model: **`nomic-embed-text`** (`embeddings::DEFAULT_EMBED_MODE
 
 Default classify model: **`llama3.2`** (`classify::DEFAULT_CLASSIFY_MODEL`). Classify a capture with Tauri command `classify_capture` `{ captureId }` — writes `content_type`, `confidence`, and `processing_status` on `capture_ai_metadata` only (migration `v004_classification`).
 
+Enrichment uses the same default model (`enrich::DEFAULT_ENRICH_MODEL`) and prompt id **`enrich_v1`**. Tauri command `enrich_capture` `{ captureId }` writes topics/keywords/entities/short_description only.
+
 Pull models as needed:
 
 ```bash

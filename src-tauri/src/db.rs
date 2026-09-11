@@ -50,6 +50,17 @@ pub struct AiClassification {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AiEnrichment {
+    pub capture_id: String,
+    pub topics_json: Option<String>,
+    pub keywords_json: Option<String>,
+    pub entities_json: Option<String>,
+    pub short_description: Option<String>,
+    pub processing_status: Option<String>,
+    pub updated_at: String,
+}
+
 #[derive(Debug)]
 pub struct Database {
     conn: Connection,
@@ -279,6 +290,83 @@ impl Database {
                 },
             )
             .optional()
+    }
+
+    /// Upsert enrichment fields only; preserves classification and embedding_ref.
+    pub fn upsert_enrichment(
+        &self,
+        capture_id: &str,
+        topics_json: &str,
+        keywords_json: &str,
+        entities_json: &str,
+        short_description: &str,
+        processing_status: &str,
+        updated_at: &str,
+    ) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT INTO capture_ai_metadata (
+                capture_id, content_type, confidence, topics_json, keywords_json, entities_json,
+                short_description, embedding_ref, updated_at, processing_status
+             ) VALUES (?1, NULL, NULL, ?2, ?3, ?4, ?5, NULL, ?6, ?7)
+             ON CONFLICT(capture_id) DO UPDATE SET
+               topics_json = excluded.topics_json,
+               keywords_json = excluded.keywords_json,
+               entities_json = excluded.entities_json,
+               short_description = excluded.short_description,
+               processing_status = excluded.processing_status,
+               updated_at = excluded.updated_at",
+            params![
+                capture_id,
+                topics_json,
+                keywords_json,
+                entities_json,
+                short_description,
+                updated_at,
+                processing_status
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_ai_enrichment(&self, capture_id: &str) -> rusqlite::Result<Option<AiEnrichment>> {
+        self.conn
+            .query_row(
+                "SELECT capture_id, topics_json, keywords_json, entities_json,
+                        short_description, processing_status, updated_at
+                 FROM capture_ai_metadata WHERE capture_id = ?1",
+                params![capture_id],
+                |row| {
+                    Ok(AiEnrichment {
+                        capture_id: row.get(0)?,
+                        topics_json: row.get(1)?,
+                        keywords_json: row.get(2)?,
+                        entities_json: row.get(3)?,
+                        short_description: row.get(4)?,
+                        processing_status: row.get(5)?,
+                        updated_at: row.get(6)?,
+                    })
+                },
+            )
+            .optional()
+    }
+
+    /// Soft-fail marker for AI pipeline errors (does not touch raw captures).
+    pub fn mark_ai_processing_failed(
+        &self,
+        capture_id: &str,
+        updated_at: &str,
+    ) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT INTO capture_ai_metadata (
+                capture_id, content_type, confidence, topics_json, keywords_json, entities_json,
+                short_description, embedding_ref, updated_at, processing_status
+             ) VALUES (?1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?2, 'failed')
+             ON CONFLICT(capture_id) DO UPDATE SET
+               processing_status = 'failed',
+               updated_at = excluded.updated_at",
+            params![capture_id, updated_at],
+        )?;
+        Ok(())
     }
 
     /// All stored embeddings as (capture_id, little-endian f32 blob).

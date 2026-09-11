@@ -3,6 +3,7 @@ pub mod capture;
 pub mod classify;
 pub mod db;
 pub mod embeddings;
+pub mod enrich;
 pub mod ipc;
 pub mod media;
 pub mod ollama;
@@ -120,6 +121,22 @@ fn classify_capture(
     .map_err(|e| e.to_string())
 }
 
+/// Enrich one capture with topics/keywords/entities/short description via Ollama.
+#[tauri::command]
+fn enrich_capture(
+    app: tauri::AppHandle,
+    capture_id: String,
+) -> Result<db::AiEnrichment, String> {
+    let (_dir, db) = open_app_db(&app)?;
+    enrich::enrich_capture(
+        &db,
+        &capture_id,
+        &ollama::ollama_base_url(),
+        enrich::DEFAULT_ENRICH_MODEL,
+    )
+    .map_err(|e| e.to_string())
+}
+
 fn run_capture_now_from_shortcut(app: &tauri::AppHandle) -> Result<String, String> {
     let (dir, db) = open_app_db(app)?;
     let opts = CaptureNowOptions::default();
@@ -212,7 +229,8 @@ pub fn run() {
             ollama_health,
             embed_capture,
             search_semantic,
-            classify_capture
+            classify_capture,
+            enrich_capture
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");
