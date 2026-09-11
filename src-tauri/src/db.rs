@@ -9,9 +9,11 @@ use std::path::Path;
 /// Migration identity recorded in `schema_migrations`.
 pub const MIGRATION_V001_CAPTURES: &str = "v001_captures";
 pub const MIGRATION_V002_CAPTURES_FTS: &str = "v002_captures_fts";
+pub const MIGRATION_V003_EMBEDDINGS: &str = "v003_embeddings";
 
 const V001_SQL: &str = include_str!("../../_docs/data-model/schema_v001.sql");
 const V002_SQL: &str = include_str!("../../_docs/data-model/schema_v002_fts.sql");
+const V003_SQL: &str = include_str!("../../_docs/data-model/schema_v003_embeddings.sql");
 
 const SNIPPET_MAX_CHARS: usize = 160;
 
@@ -77,6 +79,7 @@ impl Database {
 
         self.apply_migration(MIGRATION_V001_CAPTURES, V001_SQL)?;
         self.apply_migration(MIGRATION_V002_CAPTURES_FTS, V002_SQL)?;
+        self.apply_migration(MIGRATION_V003_EMBEDDINGS, V003_SQL)?;
 
         // Ensure FKs remain on after any SQL that may have set them.
         self.configure()?;
@@ -158,6 +161,60 @@ impl Database {
             params![capture_id],
             |row| row.get(0),
         )
+    }
+
+    /// Upsert embedding vector blob for a capture; does not touch captures.original_content.
+    pub fn upsert_embedding(
+        &self,
+        capture_id: &str,
+        model: &str,
+        dims: i64,
+        vector_blob: &[u8],
+        created_at: &str,
+        embedding_ref: &str,
+    ) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT INTO capture_embeddings (capture_id, model, dims, vector_blob, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(capture_id) DO UPDATE SET
+               model = excluded.model,
+               dims = excluded.dims,
+               vector_blob = excluded.vector_blob,
+               created_at = excluded.created_at",
+            params![capture_id, model, dims, vector_blob, created_at],
+        )?;
+
+        self.conn.execute(
+            "INSERT INTO capture_ai_metadata (
+                capture_id, content_type, confidence, topics_json, keywords_json, entities_json,
+                short_description, embedding_ref, updated_at
+             ) VALUES (?1, NULL, NULL, NULL, NULL, NULL, NULL, ?2, ?3)
+             ON CONFLICT(capture_id) DO UPDATE SET
+               embedding_ref = excluded.embedding_ref,
+               updated_at = excluded.updated_at",
+            params![capture_id, embedding_ref, created_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_embedding_blob(&self, capture_id: &str) -> rusqlite::Result<Option<Vec<u8>>> {
+        self.conn
+            .query_row(
+                "SELECT vector_blob FROM capture_embeddings WHERE capture_id = ?1",
+                params![capture_id],
+                |row| row.get(0),
+            )
+            .optional()
+    }
+
+    pub fn get_embedding_ref(&self, capture_id: &str) -> rusqlite::Result<Option<String>> {
+        self.conn
+            .query_row(
+                "SELECT embedding_ref FROM capture_ai_metadata WHERE capture_id = ?1",
+                params![capture_id],
+                |row| row.get(0),
+            )
+            .optional()
     }
 
     /// Recent captures for Inbox, newest first.
@@ -311,6 +368,7 @@ mod tests {
         db.migrate().expect("third migrate");
         assert!(db.migration_applied(MIGRATION_V001_CAPTURES).unwrap());
         assert!(db.migration_applied(MIGRATION_V002_CAPTURES_FTS).unwrap());
+        assert!(db.migration_applied(MIGRATION_V003_EMBEDDINGS).unwrap());
     }
 
     #[test]

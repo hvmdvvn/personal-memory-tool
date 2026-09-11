@@ -1,6 +1,7 @@
 pub mod browser_capture;
 pub mod capture;
 pub mod db;
+pub mod embeddings;
 pub mod ipc;
 pub mod media;
 pub mod ollama;
@@ -74,6 +75,19 @@ fn list_recent_captures(app: tauri::AppHandle, limit: Option<i64>) -> Result<Vec
 #[tauri::command]
 fn ollama_health() -> ollama::OllamaHealth {
     ollama::check_ollama_health(&ollama::ollama_base_url())
+}
+
+/// Generate and store an embedding for one capture's original text.
+#[tauri::command]
+fn embed_capture(app: tauri::AppHandle, capture_id: String) -> Result<String, String> {
+    let (_dir, db) = open_app_db(&app)?;
+    embeddings::embed_capture(
+        &db,
+        &capture_id,
+        &ollama::ollama_base_url(),
+        embeddings::DEFAULT_EMBED_MODEL,
+    )
+    .map_err(|e| e.to_string())
 }
 
 fn run_capture_now_from_shortcut(app: &tauri::AppHandle) -> Result<String, String> {
@@ -165,7 +179,8 @@ pub fn run() {
             capture_screenshot,
             capture_now,
             list_recent_captures,
-            ollama_health
+            ollama_health,
+            embed_capture
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");

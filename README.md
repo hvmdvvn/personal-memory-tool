@@ -83,7 +83,15 @@ Optional override:
 set OLLAMA_HOST=127.0.0.1:11434
 ```
 
-Health check from the app: Tauri command `ollama_health` (returns `{ ok, base_url, models, error }`). Pull models as needed later for embeddings/chat (issues #14+).
+Health check from the app: Tauri command `ollama_health` (returns `{ ok, base_url, models, error }`).
+
+Default embedding model: **`nomic-embed-text`** (`embeddings::DEFAULT_EMBED_MODEL`). Embed a capture with Tauri command `embed_capture` `{ captureId }`. Vectors are stored in SQLite table `capture_embeddings` (migration `v003_embeddings`), not the sqlite-vec extension.
+
+Pull models as needed:
+
+```bash
+ollama pull nomic-embed-text
+```
 
 ## Docs
 

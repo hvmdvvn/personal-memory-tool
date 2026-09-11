@@ -74,7 +74,7 @@ The user is **not** required to set type at capture time; AI may fill `content_t
 
 ## Explicitly not in v001
 
-- FTS5 virtual tables (#4)
-- Concrete vector storage (#14)
+- FTS5 virtual tables (#4) — see `schema_v002_fts.sql`
+- Concrete vector storage (#14) — see `schema_v003_embeddings.sql`
 - Capture/UI commands (#6–#10)
 - Prompt-version or full AI job status machines (#16 / #17)
