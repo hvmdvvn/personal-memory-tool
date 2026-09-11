@@ -48,14 +48,14 @@ Default hotkey: **Ctrl+Shift+Space** (defined as `DEFAULT_GLOBAL_SHORTCUT` in `s
 
 To change it: update that constant **and** the matching `Shortcut::new(...)` / `sc.matches(...)` wiring in `src-tauri/src/lib.rs` so they stay in sync. A config-file remap lands later (issue #28).
 
-On press, the app logs `[shortcut] capture-shortcut-ack` and emits the Tauri event `capture-shortcut` with payload `capture-shortcut-ack`. No capture is saved yet (see issue #9).
+On press, the app runs `capture_now` (clipboard preferred; if empty, screenshot fallback by default — see `DEFAULT_SCREENSHOT_ON_EMPTY_CLIPBOARD` in `src-tauri/src/orchestrate.rs`) and emits `capture-shortcut` with `{ status, id }` or `{ status, error }`.
 
 ### Manual test (Windows)
 
 1. Run `npm run tauri dev` and wait until the window is up.
 2. Focus another application (browser, Notepad, etc.).
 3. Press **Ctrl+Shift+Space**.
-4. Confirm the stub ack in the terminal (`[shortcut] capture-shortcut-ack`) and/or that the `capture-shortcut` event fires if you listen in the UI.
+4. Confirm a new capture id is logged (`[shortcut] capture_now ok id=...`) and/or the `capture-shortcut` event includes that id.
 5. If nothing happens, another app may already own that hotkey—check the terminal for `failed to register`.
 
 ## Screenshots / media storage
