@@ -8,6 +8,7 @@ pub mod ipc;
 pub mod media;
 pub mod ollama;
 pub mod orchestrate;
+pub mod qa;
 pub mod related;
 pub mod search;
 pub mod semantic;
@@ -175,6 +176,24 @@ fn related_to(
     related::related_to(&db, &capture_id, limit.unwrap_or(10)).map_err(|e| e.to_string())
 }
 
+/// Personal Q&A over retrieved memories via local Ollama.
+#[tauri::command]
+fn ask_memories(
+    app: tauri::AppHandle,
+    question: String,
+    top_k: Option<usize>,
+) -> Result<qa::QaAnswer, String> {
+    let (_dir, db) = open_app_db(&app)?;
+    qa::ask_memories(
+        &db,
+        &question,
+        &ollama::ollama_base_url(),
+        qa::DEFAULT_QA_MODEL,
+        top_k.unwrap_or(qa::DEFAULT_TOP_K),
+    )
+    .map_err(|e| e.to_string())
+}
+
 fn run_capture_now_from_shortcut(app: &tauri::AppHandle) -> Result<String, String> {
     let (dir, db) = open_app_db(app)?;
     let opts = CaptureNowOptions::default();
@@ -270,7 +289,8 @@ pub fn run() {
             classify_capture,
             enrich_capture,
             search_unified,
-            related_to
+            related_to,
+            ask_memories
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");

@@ -91,6 +91,8 @@ Default classify model: **`llama3.2`** (`classify::DEFAULT_CLASSIFY_MODEL`). Cla
 
 Enrichment uses the same default model (`enrich::DEFAULT_ENRICH_MODEL`) and prompt id **`enrich_v1`**. Tauri command `enrich_capture` `{ captureId }` writes topics/keywords/entities/short_description only.
 
+Personal Q&A: Tauri `ask_memories` `{ question, topK? }` — default model **`llama3.2`**, top-k **5**, per-capture truncate **800** chars, context budget **4000** chars (`qa` module).
+
 Pull models as needed:
 
 ```bash

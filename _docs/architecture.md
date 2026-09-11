@@ -32,6 +32,7 @@ What exists in the repository today:
 - **Unified search** — `search_unified` merges FTS + semantic with `exact`/`semantic`/`both` reasons
 - **Search UI** — Inbox/Search nav; query + type/date filters calling `search_unified`
 - **Related items** — `related_to` cosine neighbors (optional topics/keywords boost)
+- **Personal Q&A** — `ask_memories` retrieves top-k, prompts Ollama, returns answer + citations
 - Planning and context docs under `_docs/`, plus agent entrypoints (`AGENTS.md`, `CLAUDE.md`)
 
 Not implemented yet: capture engine, AI pipeline, browser extension, search, connections, resurfacing, or personal assistant.
