@@ -15,9 +15,10 @@ What exists in the repository today:
 - **React + TypeScript + Vite UI** — `src/`
 - **Scaffold-only UI** — template app screen; not the product Inbox/Search/Assistant surfaces
 - **Rust unit tests** — trivial health/smoke tests in `src-tauri` (`cargo test`)
+- **Data model design (v001)** — `_docs/data-model/` (`schema_v001.sql` + design note); not applied by the app yet
 - Planning and context docs under `_docs/`, plus agent entrypoints (`AGENTS.md`, `CLAUDE.md`)
 
-Not implemented yet: capture engine, SQLite, AI pipeline, browser extension, search, connections, resurfacing, or personal assistant.
+Not implemented yet: capture engine, live SQLite migrations/CRUD, AI pipeline, browser extension, search, connections, resurfacing, or personal assistant.
 
 ---
 

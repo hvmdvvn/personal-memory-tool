@@ -69,6 +69,7 @@ Workflow details: `_docs/process.md`.
 | `tasks.md` | Backlog overview / issue index |
 | `process.md` | How to pick and finish a task |
 | `architecture.md` | Planned vs current structure |
+| `data-model/` | Capture / AI-metadata schema (v001) |
 | `testing-guidelines.md` | How to verify work |
 | `design-system.md` | UI principles (when touching UI) |
 
