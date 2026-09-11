@@ -1,3 +1,4 @@
+pub mod browser_capture;
 pub mod capture;
 pub mod db;
 pub mod ipc;
@@ -84,8 +85,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            if let Err(e) = ipc::start_extension_ipc_server() {
-                eprintln!("[ipc] failed to start extension IPC: {e}");
+            match app.path().app_data_dir() {
+                Ok(dir) => {
+                    if let Err(e) = ipc::start_extension_ipc_server(dir) {
+                        eprintln!("[ipc] failed to start extension IPC: {e}");
+                    }
+                }
+                Err(e) => eprintln!("[ipc] app data dir unavailable: {e}"),
             }
             #[cfg(desktop)]
             {

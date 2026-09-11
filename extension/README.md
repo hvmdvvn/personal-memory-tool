@@ -9,6 +9,14 @@ Chrome-compatible Manifest V3 extension that talks to the Personal Memory **desk
 3. Shared token (must match desktop): `personal-memory-local-dev-token`  
    Header: `X-Memory-Token`
 
+## Permissions
+
+| Permission | Why |
+|------------|-----|
+| `activeTab` | Access the tab the user invoked the action on |
+| `scripting` | Read `document.title`, `location.href`, and `window.getSelection()` |
+| `host_permissions: http://127.0.0.1:17832/*` | Talk to the desktop IPC server |
+
 ## Load unpacked (Chrome)
 
 1. Open `chrome://extensions`
@@ -16,19 +24,25 @@ Chrome-compatible Manifest V3 extension that talks to the Personal Memory **desk
 3. **Load unpacked** → select this `extension/` directory
 4. Pin the extension if you like
 
-## Verify ping
+## Manual test: selection → Inbox
 
-1. Ensure the desktop app is running (look for log: `[ipc] extension IPC listening on http://127.0.0.1:17832`).
-2. Click the extension action icon (toolbar).
-3. Open the service worker DevTools (extensions page → “service worker” / “Inspect views”) and confirm a log like `ping result { status: 200, data: { ok: true, pong: true, ... } }`.
+1. Start the desktop app; confirm log `[ipc] extension IPC listening on http://127.0.0.1:17832`.
+2. Open any web page, **select some text**.
+3. Click the extension toolbar action.
+4. In the extension service worker console, confirm `capture result` with `status: 200` and an `id`.
+5. In the desktop **Inbox**, click **Refresh** (or rely on a later capture-shortcut refresh) and confirm the snippet/source shows the selection with browser URL/title context.
 
-Wrong token or app not running → non-200 / fetch error.
+Empty selection still saves a row (empty text) with URL/title.
+
+## Ping (debug)
+
+From the service worker console you can still message `{ type: "ping" }` via `chrome.runtime.sendMessage`, or temporarily call the old ping path used in development.
 
 ## Pairing notes
 
-- Port and token are constants in `extension/background.js` and `src-tauri/src/ipc.rs` for local-dev simplicity.
+- Port and token are constants in `extension/background.js` and `src-tauri/src/ipc.rs`.
+- Endpoints: `POST /ping`, `POST /capture` with JSON `{ url, title, selection }`.
 - No cloud endpoints. Do not change the bind address away from `127.0.0.1`.
-- Full page URL/selection capture is issue #12.
 
 ## Firefox
 
