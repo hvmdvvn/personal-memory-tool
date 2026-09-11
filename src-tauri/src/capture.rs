@@ -1,6 +1,7 @@
-//! Clipboard → raw capture (issue #6).
+//! Clipboard → raw capture (issues #6–#7).
 
 use crate::db::{Database, RawCapture};
+use crate::window_context::{foreground_window_context, WindowContext};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -36,7 +37,11 @@ pub fn read_clipboard_text() -> Result<String, CaptureError> {
 }
 
 /// Persist clipboard text as an immutable raw capture. Returns the new id.
-pub fn save_clipboard_capture(db: &Database, text: &str) -> Result<String, CaptureError> {
+pub fn save_clipboard_capture(
+    db: &Database,
+    text: &str,
+    window: Option<&WindowContext>,
+) -> Result<String, CaptureError> {
     if text.is_empty() {
         return Err(CaptureError::EmptyClipboard);
     }
@@ -47,8 +52,8 @@ pub fn save_clipboard_capture(db: &Database, text: &str) -> Result<String, Captu
         original_content: text.to_string(),
         captured_at: utc_now_iso8601(),
         source_kind: Some("clipboard".into()),
-        source_app: None,
-        source_title: None,
+        source_app: window.and_then(|w| w.app.clone()),
+        source_title: window.and_then(|w| w.title.clone()),
         source_url: None,
         source_extra: None,
         media_path: None,
@@ -59,10 +64,12 @@ pub fn save_clipboard_capture(db: &Database, text: &str) -> Result<String, Captu
     Ok(id)
 }
 
-/// Read clipboard and save in one step (production path).
+/// Read clipboard + soft-fail window context, then save.
 pub fn capture_clipboard_to_db(db: &Database) -> Result<String, CaptureError> {
     let text = read_clipboard_text()?;
-    save_clipboard_capture(db, &text)
+    let ctx = foreground_window_context();
+    let ctx_ref = if ctx.is_empty() { None } else { Some(&ctx) };
+    save_clipboard_capture(db, &text, ctx_ref)
 }
 
 fn utc_now_iso8601() -> String {
@@ -70,13 +77,10 @@ fn utc_now_iso8601() -> String {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    // Minimal RFC3339 UTC without external clock crate dependency beyond std.
-    // Format: YYYY-MM-DDTHH:MM:SSZ via a tiny breakdown.
     epoch_secs_to_iso8601(secs)
 }
 
 fn epoch_secs_to_iso8601(secs: u64) -> String {
-    // Civil date from Unix day (Howard Hinnant algorithm).
     let days = (secs / 86_400) as i64;
     let tod = secs % 86_400;
     let hour = tod / 3600;
@@ -106,7 +110,7 @@ mod tests {
     fn save_mocked_clipboard_text_round_trips() {
         let db = Database::open_in_memory().unwrap();
         let text = "  keep exact clipboard\ntext  ";
-        let id = save_clipboard_capture(&db, text).unwrap();
+        let id = save_clipboard_capture(&db, text, None).unwrap();
         let loaded = db.get_raw_capture(&id).unwrap().unwrap();
         assert_eq!(loaded.original_content, text);
         assert_eq!(loaded.source_kind.as_deref(), Some("clipboard"));
@@ -116,9 +120,32 @@ mod tests {
     }
 
     #[test]
+    fn save_applies_window_context_when_provided() {
+        let db = Database::open_in_memory().unwrap();
+        let ctx = WindowContext {
+            app: Some("Code".into()),
+            title: Some("plan.md - spec".into()),
+        };
+        let id = save_clipboard_capture(&db, "hello", Some(&ctx)).unwrap();
+        let loaded = db.get_raw_capture(&id).unwrap().unwrap();
+        assert_eq!(loaded.source_app.as_deref(), Some("Code"));
+        assert_eq!(loaded.source_title.as_deref(), Some("plan.md - spec"));
+        assert_eq!(loaded.original_content, "hello");
+    }
+
+    #[test]
+    fn missing_window_context_still_saves() {
+        let db = Database::open_in_memory().unwrap();
+        let id = save_clipboard_capture(&db, "no-window", None).unwrap();
+        let loaded = db.get_raw_capture(&id).unwrap().unwrap();
+        assert!(loaded.source_app.is_none());
+        assert!(loaded.source_title.is_none());
+    }
+
+    #[test]
     fn empty_clipboard_does_not_insert() {
         let db = Database::open_in_memory().unwrap();
-        let err = save_clipboard_capture(&db, "").unwrap_err();
+        let err = save_clipboard_capture(&db, "", None).unwrap_err();
         assert_eq!(err, CaptureError::EmptyClipboard);
         assert_eq!(db.count_raw_captures().unwrap(), 0);
     }

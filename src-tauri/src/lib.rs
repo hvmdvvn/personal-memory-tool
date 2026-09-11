@@ -1,6 +1,7 @@
 pub mod capture;
 pub mod db;
 pub mod shortcut;
+pub mod window_context;
 
 use db::Database;
 use tauri::Manager;
