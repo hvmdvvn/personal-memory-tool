@@ -8,6 +8,7 @@ pub mod ipc;
 pub mod media;
 pub mod ollama;
 pub mod orchestrate;
+pub mod search;
 pub mod semantic;
 pub mod shortcut;
 pub mod window_context;
@@ -137,6 +138,22 @@ fn enrich_capture(
     .map_err(|e| e.to_string())
 }
 
+/// Unified exact (FTS) + semantic search with match reasons.
+#[tauri::command]
+fn search_unified(
+    app: tauri::AppHandle,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<search::UnifiedHit>, String> {
+    let (_dir, db) = open_app_db(&app)?;
+    search::search_unified(
+        &db,
+        &query,
+        limit.unwrap_or(20),
+        &ollama::ollama_base_url(),
+    )
+}
+
 fn run_capture_now_from_shortcut(app: &tauri::AppHandle) -> Result<String, String> {
     let (dir, db) = open_app_db(app)?;
     let opts = CaptureNowOptions::default();
@@ -230,7 +247,8 @@ pub fn run() {
             embed_capture,
             search_semantic,
             classify_capture,
-            enrich_capture
+            enrich_capture,
+            search_unified
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");
